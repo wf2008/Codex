@@ -42,7 +42,7 @@ jobs:
           fi
           echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
 
-      - name: Generate unique kernel name
+      - name: Generate unique kernel name, id, and title
         id: kernel
         run: |
           UNIQUE_SUFFIX=$(date +%s)
@@ -78,65 +78,51 @@ jobs:
           OUTPUT_DIR = Path("/kaggle/working")
           OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
           URL_FILE = OUTPUT_DIR / "tunnel_url.txt"
-          LOG_FILE = OUTPUT_DIR / "setup.log"
 
           def log(msg):
               print(msg, flush=True)
-              with LOG_FILE.open("a", encoding="utf-8") as f:
-                  f.write(msg + "\n")
 
           MODEL_NAME = "huihui_ai/qwen2.5-coder-abliterate"
           TUNNEL_PORT = 11434
 
-          # 1. Install zstd (required by Ollama installer)
           log("Installing zstd...")
           subprocess.run("apt-get update -qq && apt-get install -y -qq zstd", shell=True, check=True)
 
-          # 2. Install Ollama
           log("Installing Ollama...")
           subprocess.run("curl -fsSL https://ollama.com/install.sh | sh", shell=True, check=True)
 
-          # 3. Start Ollama server
           log("Starting Ollama server...")
           os.environ["OLLAMA_HOST"] = f"0.0.0.0:{TUNNEL_PORT}"
           os.environ["OLLAMA_ORIGINS"] = "*"
           server = subprocess.Popen(["ollama", "serve"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-          # 4. Wait for server to be ready
           log("Waiting for Ollama server...")
-          ready = False
           for _ in range(30):
               try:
                   if requests.get(f"http://127.0.0.1:{TUNNEL_PORT}/", timeout=2).status_code == 200:
                       log("Ollama server ready")
-                      ready = True
                       break
               except:
                   pass
               time.sleep(2)
-          if not ready:
-              URL_FILE.write_text("ERROR_SERVER_START\n")
-              raise RuntimeError("Ollama server did not start")
+          else:
+              log("ERROR: Ollama server did not start")
+              sys.exit(1)
 
-          # 5. Pull model
           log(f"Pulling model {MODEL_NAME}...")
           subprocess.run(["ollama", "pull", MODEL_NAME], check=True)
 
-          # 6. Download cloudflared binary
           log("Downloading cloudflared...")
           subprocess.run("wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared", shell=True)
           subprocess.run("chmod +x cloudflared", shell=True)
           subprocess.run("mv cloudflared /usr/local/bin/", shell=True)
-          subprocess.run("cloudflared --version", shell=True)
 
-          # 7. Start Cloudflare tunnel
           log("Starting Cloudflare tunnel...")
           tunnel = subprocess.Popen(
               ["cloudflared", "tunnel", "--url", f"http://127.0.0.1:{TUNNEL_PORT}", "--no-autoupdate"],
               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
           )
 
-          # 8. Capture tunnel URL
           pattern = re.compile(r"https://[-a-zA-Z0-9]+\.trycloudflare\.com")
           tunnel_url = None
           for line in tunnel.stdout:
@@ -148,12 +134,13 @@ jobs:
                   URL_FILE.write_text(tunnel_url + "\n")
                   log(f"TUNNEL_URL={tunnel_url}")
                   break
-          if not tunnel_url:
-              URL_FILE.write_text("ERROR_TUNNEL_START\n")
-              raise RuntimeError("Tunnel URL not found")
 
-          log("Tunnel established. Keeping kernel alive for 2 hours.")
-          time.sleep(7200)   # 2 hours
+          if not tunnel_url:
+              log("ERROR: No tunnel URL found")
+              sys.exit(1)
+
+          log("Tunnel established. Keeping kernel alive for 6 hours.")
+          time.sleep(21600)
           EOF
 
       - name: Push kernel to Kaggle
@@ -177,29 +164,25 @@ jobs:
           echo "❌ Kernel did not start"
           exit 1
 
-      - name: Wait for tunnel URL and capture
+      - name: Wait for tunnel URL and capture (from logs)
         id: get_url
         env:
           KERNEL_ID: ${{ steps.kernel.outputs.id }}
         run: |
-          rm -rf kaggle-output
-          mkdir -p kaggle-output
           URL=""
           for i in $(seq 1 120); do
-            rm -f kaggle-output/*
-            kaggle kernels output "$KERNEL_ID" -p kaggle-output --force --quiet || true
-            if [ -f kaggle-output/tunnel_url.txt ]; then
-              URL=$(tr -d '\r\n' < kaggle-output/tunnel_url.txt)
-              if [ -n "$URL" ] && [ "$URL" != "ERROR_SERVER_START" ] && [ "$URL" != "ERROR_TUNNEL_START" ]; then
-                echo "Found tunnel URL: $URL"
-                break
-              fi
+            # Fetch kernel logs
+            LOGS=$(kaggle kernels status "$KERNEL_ID" --log 2>/dev/null)
+            if echo "$LOGS" | grep -q "TUNNEL_URL="; then
+              URL=$(echo "$LOGS" | grep "TUNNEL_URL=" | head -1 | cut -d= -f2 | tr -d '[:space:]')
+              echo "Found tunnel URL: $URL"
+              break
             fi
             echo "Waiting for tunnel... ($i/120)"
             sleep 10
           done
           if [ -z "$URL" ]; then
-            echo "❌ Failed to get tunnel URL"
+            echo "❌ Failed to get tunnel URL from logs"
             exit 1
           fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
@@ -209,7 +192,7 @@ jobs:
           mkdir -p frontend
           echo "${{ steps.get_url.outputs.url }}" > frontend/ollama_url.txt
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config.user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add frontend/ollama_url.txt
           git commit -m "Update Ollama URL from Kaggle GPU [skip ci]" || echo "No changes"
           git push
