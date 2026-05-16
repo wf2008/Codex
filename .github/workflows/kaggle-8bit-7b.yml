@@ -1,4 +1,4 @@
-name: Kaggle GPU Model Server (No long sleep)
+name: Ollama on Kaggle GPU
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  start-server:
+  start-ollama:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -27,7 +27,6 @@ jobs:
             echo "❌ KAGGLE_API_TOKEN secret not set"
             exit 1
           fi
-
           mkdir -p ~/.kaggle
           echo "$KAGGLE_API_TOKEN" > ~/.kaggle/access_token
           chmod 600 ~/.kaggle/access_token
@@ -43,14 +42,13 @@ jobs:
           fi
           echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
 
-      - name: Generate unique kernel name, id, and title
+      - name: Generate unique kernel name
         id: kernel
         run: |
           UNIQUE_SUFFIX=$(date +%s)
-          KERNEL_SLUG="qwen-server-${UNIQUE_SUFFIX}"
+          KERNEL_SLUG="ollama-gpu-${UNIQUE_SUFFIX}"
           KERNEL_ID="${{ steps.username.outputs.username }}/${KERNEL_SLUG}"
-          KERNEL_TITLE="Qwen Server ${UNIQUE_SUFFIX}"
-
+          KERNEL_TITLE="Ollama GPU ${UNIQUE_SUFFIX}"
           echo "slug=${KERNEL_SLUG}" >> "$GITHUB_OUTPUT"
           echo "id=${KERNEL_ID}" >> "$GITHUB_OUTPUT"
           echo "title=${KERNEL_TITLE}" >> "$GITHUB_OUTPUT"
@@ -64,7 +62,7 @@ jobs:
           {
             "id": "${{ steps.kernel.outputs.id }}",
             "title": "${{ steps.kernel.outputs.title }}",
-            "code_file": "server.py",
+            "code_file": "ollama_gpu.py",
             "language": "python",
             "kernel_type": "script",
             "is_private": true,
@@ -73,92 +71,89 @@ jobs:
           }
           EOF
 
-          cat > server.py << 'EOF'
-          import re
-          import subprocess
-          import sys
-          import time
+          cat > ollama_gpu.py << 'EOF'
+          import subprocess, sys, os, time, requests, re
           from pathlib import Path
-
-          import requests
 
           OUTPUT_DIR = Path("/kaggle/working")
           OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
           URL_FILE = OUTPUT_DIR / "tunnel_url.txt"
-          LOG_FILE = OUTPUT_DIR / "server_status.log"
-          CLOUDFLARED_LOG = OUTPUT_DIR / "cloudflared.log"
+          LOG_FILE = OUTPUT_DIR / "setup.log"
 
           def log(msg):
               print(msg, flush=True)
               with LOG_FILE.open("a", encoding="utf-8") as f:
                   f.write(msg + "\n")
 
-          log("Installing dependencies...")
-          subprocess.run(
-              [sys.executable, "-m", "pip", "install", "-q", "vllm", "cloudflared", "torch", "transformers", "accelerate", "requests"],
-              check=True,
-          )
+          MODEL_NAME = "huihui_ai/qwen2.5-coder-abliterate"
+          TUNNEL_PORT = 11434
 
-          model = "huihui_ai/qwen2.5-coder-abliterate"
+          # 1. Install zstd (required by Ollama installer)
+          log("Installing zstd...")
+          subprocess.run("apt-get update -qq && apt-get install -y -qq zstd", shell=True, check=True)
 
-          log("Starting vLLM server...")
-          subprocess.Popen([
-              sys.executable,
-              "-m", "vllm.entrypoints.openai.api_server",
-              "--model", model,
-              "--port", "8000",
-              "--max-model-len", "4096",
-              "--gpu-memory-utilization", "0.9",
-              "--trust-remote-code",
-          ])
+          # 2. Install Ollama
+          log("Installing Ollama...")
+          subprocess.run("curl -fsSL https://ollama.com/install.sh | sh", shell=True, check=True)
 
-          log("Waiting for vLLM server to become healthy...")
-          for _ in range(180):
+          # 3. Start Ollama server
+          log("Starting Ollama server...")
+          os.environ["OLLAMA_HOST"] = f"0.0.0.0:{TUNNEL_PORT}"
+          os.environ["OLLAMA_ORIGINS"] = "*"
+          server = subprocess.Popen(["ollama", "serve"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+          # 4. Wait for server to be ready
+          log("Waiting for Ollama server...")
+          ready = False
+          for _ in range(30):
               try:
-                  r = requests.get("http://127.0.0.1:8000/health", timeout=3)
-                  if r.status_code == 200:
-                      log("vLLM is healthy")
+                  if requests.get(f"http://127.0.0.1:{TUNNEL_PORT}/", timeout=2).status_code == 200:
+                      log("Ollama server ready")
+                      ready = True
                       break
-              except Exception:
+              except:
                   pass
-              time.sleep(5)
-          else:
-              URL_FILE.write_text("ERROR_SERVER_START\n", encoding="utf-8")
-              log("ERROR: vLLM server did not become ready")
-              sys.exit(1)
+              time.sleep(2)
+          if not ready:
+              URL_FILE.write_text("ERROR_SERVER_START\n")
+              raise RuntimeError("Ollama server did not start")
 
+          # 5. Pull model
+          log(f"Pulling model {MODEL_NAME}...")
+          subprocess.run(["ollama", "pull", MODEL_NAME], check=True)
+
+          # 6. Download cloudflared binary
+          log("Downloading cloudflared...")
+          subprocess.run("wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared", shell=True)
+          subprocess.run("chmod +x cloudflared", shell=True)
+          subprocess.run("mv cloudflared /usr/local/bin/", shell=True)
+          subprocess.run("cloudflared --version", shell=True)
+
+          # 7. Start Cloudflare tunnel
           log("Starting Cloudflare tunnel...")
           tunnel = subprocess.Popen(
-              ["cloudflared", "tunnel", "--url", "http://127.0.0.1:8000", "--no-autoupdate"],
-              stdout=subprocess.PIPE,
-              stderr=subprocess.STDOUT,
-              text=True,
-              bufsize=1,
+              ["cloudflared", "tunnel", "--url", f"http://127.0.0.1:{TUNNEL_PORT}", "--no-autoupdate"],
+              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
           )
 
+          # 8. Capture tunnel URL
           pattern = re.compile(r"https://[-a-zA-Z0-9]+\.trycloudflare\.com")
           tunnel_url = None
-
-          with open(CLOUDFLARED_LOG, "w", encoding="utf-8") as cf_log:
-              for line in tunnel.stdout:
-                  line = line.rstrip()
-                  log(line)
-                  cf_log.write(line + "\n")
-                  cf_log.flush()
-                  match = pattern.search(line)
-                  if match:
-                      tunnel_url = match.group(0)
-                      URL_FILE.write_text(tunnel_url + "\n", encoding="utf-8")
-                      log(f"TUNNEL_URL={tunnel_url}")
-                      break
-
+          for line in tunnel.stdout:
+              line = line.rstrip()
+              log(line)
+              match = pattern.search(line)
+              if match:
+                  tunnel_url = match.group(0)
+                  URL_FILE.write_text(tunnel_url + "\n")
+                  log(f"TUNNEL_URL={tunnel_url}")
+                  break
           if not tunnel_url:
-              URL_FILE.write_text("ERROR_TUNNEL_START\n", encoding="utf-8")
-              log("ERROR: No tunnel URL found")
-              sys.exit(1)
+              URL_FILE.write_text("ERROR_TUNNEL_START\n")
+              raise RuntimeError("Tunnel URL not found")
 
-          log("Tunnel established successfully. Exiting kernel (no long wait).")
-          # No sleep – kernel exits immediately after capturing URL.
+          log("Tunnel established. Keeping kernel alive for 2 hours.")
+          time.sleep(7200)   # 2 hours
           EOF
 
       - name: Push kernel to Kaggle
@@ -166,69 +161,47 @@ jobs:
           cd kaggle-kernel
           kaggle kernels push -p .
 
-      - name: Wait for kernel to finish (complete or error)
+      - name: Wait for kernel to start
         env:
           KERNEL_ID: ${{ steps.kernel.outputs.id }}
         run: |
-          for i in $(seq 1 180); do
-            STATUS=$(kaggle kernels status "$KERNEL_ID" 2>/dev/null | grep -i "status" || echo "")
+          for i in $(seq 1 60); do
+            STATUS=$(kaggle kernels status "$KERNEL_ID" 2>/dev/null || true)
             echo "$STATUS"
-            if echo "$STATUS" | grep -qi "complete"; then
-              echo "Kernel finished successfully"
-              exit 0
-            elif echo "$STATUS" | grep -qi "error"; then
-              echo "Kernel encountered an error"
+            if echo "$STATUS" | grep -Eiq 'running|complete'; then
               exit 0
             fi
-            echo "Waiting for kernel to finish... ($i/180)"
-            sleep 20
+            echo "Waiting for kernel start... ($i/60)"
+            sleep 10
           done
-          echo "❌ Kernel did not finish within timeout (60 minutes)"
+          echo "❌ Kernel did not start"
           exit 1
 
-      - name: Download all output files and display logs
+      - name: Wait for tunnel URL and capture
         id: get_url
         env:
           KERNEL_ID: ${{ steps.kernel.outputs.id }}
         run: |
           rm -rf kaggle-output
           mkdir -p kaggle-output
-
-          # Download all output files
-          kaggle kernels output "$KERNEL_ID" -p kaggle-output --force --quiet
-
-          echo "========================================="
-          echo "📄 server_status.log:"
-          if [ -f kaggle-output/server_status.log ]; then
-            cat kaggle-output/server_status.log
-          else
-            echo " (not found)"
-          fi
-
-          echo "========================================="
-          echo "📄 cloudflared.log:"
-          if [ -f kaggle-output/cloudflared.log ]; then
-            cat kaggle-output/cloudflared.log
-          else
-            echo " (not found)"
-          fi
-          echo "========================================="
-
-          # Extract tunnel URL if present
           URL=""
-          if [ -f kaggle-output/tunnel_url.txt ]; then
-            URL=$(tr -d '\r\n' < kaggle-output/tunnel_url.txt)
-            if [ "$URL" = "ERROR_SERVER_START" ] || [ "$URL" = "ERROR_TUNNEL_START" ]; then
-              echo "❌ Kernel reported an error: $URL"
-              exit 1
+          for i in $(seq 1 120); do
+            rm -f kaggle-output/*
+            kaggle kernels output "$KERNEL_ID" -p kaggle-output --force --quiet || true
+            if [ -f kaggle-output/tunnel_url.txt ]; then
+              URL=$(tr -d '\r\n' < kaggle-output/tunnel_url.txt)
+              if [ -n "$URL" ] && [ "$URL" != "ERROR_SERVER_START" ] && [ "$URL" != "ERROR_TUNNEL_START" ]; then
+                echo "Found tunnel URL: $URL"
+                break
+              fi
             fi
-          fi
-
+            echo "Waiting for tunnel... ($i/120)"
+            sleep 10
+          done
           if [ -z "$URL" ]; then
-            echo "❌ No tunnel URL found. Check logs above for details."
+            echo "❌ Failed to get tunnel URL"
             exit 1
           fi
-
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       - name: Commit URL to repository
@@ -238,12 +211,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add frontend/ollama_url.txt
-          git commit -m "Update Ollama URL from Kaggle [skip ci]" || echo "No changes"
+          git commit -m "Update Ollama URL from Kaggle GPU [skip ci]" || echo "No changes"
           git push
-
-      - name: Delete kernel (cleanup)
-        if: always()
-        env:
-          KERNEL_ID: ${{ steps.kernel.outputs.id }}
-        run: |
-          kaggle kernels delete "$KERNEL_ID" -y || true
