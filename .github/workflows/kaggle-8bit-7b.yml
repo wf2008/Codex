@@ -13,10 +13,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Kaggle CLI
-        run: pip install kaggle
+      - name: Install Kaggle CLI and jq
+        run: |
+          pip install kaggle
+          sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Set up Kaggle API token (new format)
+      - name: Set up Kaggle API token
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
         run: |
@@ -25,20 +27,29 @@ jobs:
           chmod 600 ~/.kaggle/access_token
           echo "KAGGLE_API_TOKEN=$KAGGLE_API_TOKEN" >> $GITHUB_ENV
 
+      - name: Set Kaggle username (from secret)
+        id: username
+        run: |
+          USERNAME="${{ secrets.KAGGLE_USERNAME }}"
+          if [ -z "$USERNAME" ]; then
+            echo "❌ KAGGLE_USERNAME secret not set"
+            exit 1
+          fi
+          echo "username=$USERNAME" >> $GITHUB_OUTPUT
+
       - name: Generate unique kernel name
         id: kernel
-        run: echo "name=qwen-${{ github.run_id }}" >> $GITHUB_OUTPUT
+        run: echo "name=qwen-server-$(date +%s)" >> $GITHUB_OUTPUT
 
-      - name: Create Kaggle kernel folder
+      - name: Create kernel folder
         run: |
           mkdir -p kaggle-kernel
           cd kaggle-kernel
 
-          # Metadata – dummy username is required by Kaggle CLI
           cat > kernel-metadata.json << EOF
           {
-           "id": "dummy/${{ steps.kernel.outputs.name }}",
-           "title": "Qwen 7B Server (2h)",
+           "id": "${{ steps.username.outputs.username }}/${{ steps.kernel.outputs.name }}",
+           "title": "Qwen 7B Server",
            "code_file": "server.py",
            "language": "python",
            "kernel_type": "script",
@@ -48,24 +59,19 @@ jobs:
           }
           EOF
 
-          # The Python script – uses YOUR model
           cat > server.py << 'EOF'
           import subprocess, time, requests, sys
 
-          print("Installing dependencies...")
           subprocess.run([sys.executable, "-m", "pip", "install", "-q", "vllm", "cloudflared"])
 
-          # YOUR MODEL NAME
           MODEL = "huihui_ai/qwen2.5-coder-abliterate"
 
-          print("Starting vLLM server...")
           server = subprocess.Popen([
               "python", "-m", "vllm.entrypoints.openai.api_server",
               "--model", MODEL, "--port", "8000", "--max-model-len", "4096",
               "--gpu-memory-utilization", "0.9", "--trust-remote-code"
-          ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+          ])
 
-          # Wait for server to be ready (2 minutes)
           for _ in range(120):
               try:
                   if requests.get("http://localhost:8000/health", timeout=2).status_code == 200:
@@ -74,27 +80,20 @@ jobs:
                   pass
               time.sleep(1)
 
-          print("Starting Cloudflare tunnel...")
           tunnel = subprocess.Popen(
               ["cloudflared", "tunnel", "--url", "http://localhost:8000", "--no-autoupdate"],
               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
           )
 
-          # Extract tunnel URL
           url = None
           for line in tunnel.stdout:
               if "https://" in line and ".trycloudflare.com" in line:
-                  parts = line.split("https://")
-                  if len(parts) > 1:
-                      url = "https://" + parts[1].split()[0]
-                      break
-          if url:
-              print(f"TUNNEL_URL={url}")
-          else:
-              print("TUNNEL_URL=ERROR")
+                  url = line.split("https://")[1].split()[0]
+                  url = "https://" + url
+                  break
+          print(f"TUNNEL_URL={url}")
 
-          # Keep kernel alive for 2 hours
-          time.sleep(7200)
+          time.sleep(7200)   # 2 hours
           EOF
 
       - name: Push kernel to Kaggle
@@ -102,24 +101,21 @@ jobs:
           cd kaggle-kernel
           kaggle kernels push -p .
 
-      - name: Wait for tunnel URL (max 10 minutes)
+      - name: Wait for tunnel URL (max 10 min)
         id: get_url
         run: |
-          KERNEL_ID="dummy/${{ steps.kernel.outputs.name }}"
+          KERNEL_ID="${{ steps.username.outputs.username }}/${{ steps.kernel.outputs.name }}"
           URL=""
           for i in {1..120}; do
-            # Download kernel logs
             kaggle kernels output "$KERNEL_ID" -p . 2>/dev/null || true
             if [ -f kernel.log ] && grep -q "TUNNEL_URL=" kernel.log; then
               URL=$(grep "TUNNEL_URL=" kernel.log | head -1 | cut -d= -f2)
-              if [ "$URL" != "ERROR" ]; then
-                break
-              fi
+              break
             fi
             echo "Waiting for tunnel... ($i/120)"
             sleep 5
           done
-          if [ -z "$URL" ] || [ "$URL" = "ERROR" ]; then
+          if [ -z "$URL" ]; then
             echo "❌ Failed to get tunnel URL"
             exit 1
           fi
