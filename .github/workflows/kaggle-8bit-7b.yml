@@ -48,9 +48,11 @@ jobs:
           UNIQUE_SUFFIX=$(date +%s)
           KERNEL_SLUG="ollama-gpu-${UNIQUE_SUFFIX}"
           KERNEL_ID="${{ steps.username.outputs.username }}/${KERNEL_SLUG}"
-          KERNEL_TITLE="Ollama GPU ${UNIQUE_SUFFIX}"
+          # Title must slugify to exactly the same as KERNEL_SLUG
+          KERNEL_TITLE="${KERNEL_SLUG}"
           echo "slug=${KERNEL_SLUG}" >> $GITHUB_OUTPUT
           echo "id=${KERNEL_ID}" >> $GITHUB_OUTPUT
+          echo "title=${KERNEL_TITLE}" >> $GITHUB_OUTPUT
 
       - name: Create kernel folder (script is embedded)
         run: |
@@ -60,7 +62,7 @@ jobs:
           cat > kernel-metadata.json <<EOF
           {
             "id": "${{ steps.kernel.outputs.id }}",
-            "title": "Ollama GPU ${UNIQUE_SUFFIX}",
+            "title": "${{ steps.kernel.outputs.title }}",
             "code_file": "script.py",
             "language": "python",
             "kernel_type": "script",
@@ -84,44 +86,32 @@ jobs:
           import base64
           from pathlib import Path
 
-          # --------------------------------------------------------------
-          # GitHub configuration (from environment variables)
-          # --------------------------------------------------------------
           GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
           GITHUB_REPO = os.environ.get("GITHUB_REPO")
           FILE_PATH = "frontend/ollama_url.txt"
 
-          def commit_to_github(content: str, token: str, repo: str, path: str):
-              url = f"https://api.github.com/repos/{repo}/contents/{path}"
-              headers = {
-                  "Authorization": f"Bearer {token}",
-                  "Accept": "application/vnd.github.v3+json",
-              }
+          def commit_to_github(content):
+              url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{FILE_PATH}"
+              headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
               data = {
                   "message": "Update Ollama URL from Kaggle",
                   "content": base64.b64encode(content.encode()).decode(),
                   "branch": "main",
               }
-              response = requests.get(url, headers=headers)
-              if response.status_code == 200:
-                  data["sha"] = response.json().get("sha")
-              put_response = requests.put(url, headers=headers, json=data)
-              if put_response.status_code in (200, 201):
-                  print(f"✅ Committed to {path}")
+              resp = requests.get(url, headers=headers)
+              if resp.status_code == 200:
+                  data["sha"] = resp.json().get("sha")
+              put = requests.put(url, headers=headers, json=data)
+              if put.status_code in (200, 201):
+                  print("✅ Committed to GitHub")
               else:
-                  print(f"❌ Failed to commit: {put_response.status_code}")
+                  print(f"❌ Failed: {put.status_code}")
 
-          # --------------------------------------------------------------
-          # Main logic: install, run Ollama, get tunnel URL, commit, exit
-          # --------------------------------------------------------------
           OUTPUT_DIR = Path("/kaggle/working")
-          OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-          LOG_FILE = OUTPUT_DIR / "setup.log"
+          OUTPUT_DIR.mkdir(exist_ok=True)
 
           def log(msg):
               print(msg, flush=True)
-              with LOG_FILE.open("a") as f:
-                  f.write(msg + "\n")
 
           log("Installing zstd...")
           subprocess.run("apt-get update -qq && apt-get install -y -qq zstd", shell=True, check=True)
@@ -134,20 +124,19 @@ jobs:
           os.environ["OLLAMA_ORIGINS"] = "*"
           subprocess.Popen(["ollama", "serve"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-          log("Waiting for Ollama server...")
+          log("Waiting for Ollama...")
           for _ in range(30):
               try:
                   if requests.get("http://127.0.0.1:11434/", timeout=2).status_code == 200:
-                      log("Ollama server ready")
                       break
               except:
                   pass
               time.sleep(2)
           else:
-              raise RuntimeError("Ollama server did not start")
+              raise RuntimeError("Ollama not ready")
 
           MODEL = "huihui_ai/qwen2.5-coder-abliterate"
-          log(f"Pulling model {MODEL}...")
+          log(f"Pulling {MODEL}...")
           subprocess.run(["ollama", "pull", MODEL], check=True)
 
           log("Downloading cloudflared...")
@@ -173,21 +162,81 @@ jobs:
                   break
 
           if not tunnel_url:
-              raise RuntimeError("No tunnel URL found")
+              raise RuntimeError("No tunnel URL")
 
           if GITHUB_TOKEN and GITHUB_REPO:
-              commit_to_github(tunnel_url, GITHUB_TOKEN, GITHUB_REPO, FILE_PATH)
+              commit_to_github(tunnel_url)
           else:
-              log("❌ Missing GITHUB_TOKEN or GITHUB_REPO")
+              log("Missing GitHub credentials")
+
+          # Keep tunnel alive for 2 hours
+          log("Keeping kernel alive for 2 hours...")
+          time.sleep(7200)
           EOF
 
-      - name: Push kernel to Kaggle
+      - name: Push kernel to Kaggle (force overwrite)
         run: |
           cd kaggle-kernel
-          kaggle kernels push -p .
+          kaggle kernels push -p . --force
 
-      - name: Wait a moment for kernel to start (optional)
-        run: sleep 30
+      - name: Wait for kernel to start (optional, just to confirm)
+        env:
+          KERNEL_ID: ${{ steps.kernel.outputs.id }}
+        run: |
+          for i in $(seq 1 30); do
+            STATUS=$(kaggle kernels status "$KERNEL_ID" 2>/dev/null | grep -i "status" || echo "")
+            if echo "$STATUS" | grep -qi "running"; then
+              echo "Kernel is running"
+              exit 0
+            fi
+            echo "Waiting for kernel to start... ($i/30)"
+            sleep 5
+          done
+          echo "Kernel may still be queued, but proceeding."
 
-      # No waiting for completion – the kernel will commit the URL and exit.
-      # The workflow finishes immediately after pushing.
+      - name: Wait for kernel to complete (max 2 hours)
+        env:
+          KERNEL_ID: ${{ steps.kernel.outputs.id }}
+        run: |
+          for i in $(seq 1 360); do
+            STATUS=$(kaggle kernels status "$KERNEL_ID" 2>/dev/null | grep -i "status" || echo "")
+            echo "$STATUS"
+            if echo "$STATUS" | grep -qi "complete"; then
+              echo "Kernel finished"
+              exit 0
+            elif echo "$STATUS" | grep -qi "error"; then
+              echo "Kernel error"
+              exit 1
+            fi
+            echo "Kernel running... ($i/360)"
+            sleep 20
+          done
+          echo "Kernel still running after 2 hours – exiting anyway"
+          exit 0
+
+      - name: Download output files and extract URL (fallback)
+        id: get_url
+        env:
+          KERNEL_ID: ${{ steps.kernel.outputs.id }}
+        run: |
+          rm -rf kaggle-output
+          mkdir -p kaggle-output
+          kaggle kernels output "$KERNEL_ID" -p kaggle-output --force
+          if [ -f kaggle-output/tunnel_url.txt ]; then
+            URL=$(tr -d '\r\n' < kaggle-output/tunnel_url.txt)
+            echo "url=$URL" >> $GITHUB_OUTPUT
+          else
+            echo "No tunnel_url.txt found – will rely on direct commit"
+          fi
+
+      - name: Ensure URL is in repo (just in case)
+        run: |
+          mkdir -p frontend
+          if [ -n "${{ steps.get_url.outputs.url }}" ]; then
+            echo "${{ steps.get_url.outputs.url }}" > frontend/ollama_url.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add frontend/ollama_url.txt
+            git commit -m "Update Ollama URL from Kaggle (fallback) [skip ci]" || echo "No changes"
+            git push
+          fi
