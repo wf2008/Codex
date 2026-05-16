@@ -51,6 +51,8 @@ jobs:
           echo "title=${KERNEL_TITLE}" >> $GITHUB_OUTPUT
 
       - name: Create kernel folder
+        env:
+          SCRIPT_B64: "aW1wb3J0IG9zCmltcG9ydCBzdWJwcm9jZXNzCmltcG9ydCBzeXMKaW1wb3J0IHRpbWUKaW1wb3J0IHJlcXVlc3RzCmltcG9ydCByZQppbXBvcnQgYmFzZTY0CmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKR0lUSFVCX1RPS0VOID0gb3MuZW52aXJvbi5nZXQoIkdJVEhVQl9UT0tFTiIpCkdJVEhVQl9SRVBPID0gb3MuZW52aXJvbi5nZXQoIkdJVEhVQl9SRVBPIikKRklMRV9QQVRIID0gImZyb250ZW5kL29sbGFtYV91cmwudHh0IgoKZGVmIGNvbW1pdF90b19naXRodWIoY29udGVudCk6CiAgICB1cmwgPSBmImh0dHBzOi8vYXBpLmdpdGh1Yi5jb20vcmVwb3Mve0dJVEhVQl9SRVBPfS9jb250ZW50cy97RklMRV9QQVRIfSIKICAgIGhlYWRlcnMgPSB7CiAgICAgICAgIkF1dGhvcml6YXRpb24iOiBmIkJlYXJlciB7R0lUSFVCX1RPS0VOfSIsCiAgICAgICAgIkFjY2VwdCI6ICJhcHBsaWNhdGlvbi92bmQuZ2l0aHViLnYzK2pzb24iLAogICAgfQogICAgZGF0YSA9IHsKICAgICAgICAibWVzc2FnZSI6ICJVcGRhdGUgT2xsYW1hIFVSTCBmcm9tIEthZ2dsZSBHUFUiLAogICAgICAgICJjb250ZW50IjogYmFzZTY0LmI2NGVuY29kZShjb250ZW50LmVuY29kZSgpKS5kZWNvZGUoKSwKICAgICAgICAiYnJhbmNoIjogIm1haW4iLAogICAgfQogICAgcmVzcCA9IHJlcXVlc3RzLmdldCh1cmwsIGhlYWRlcnM9aGVhZGVycykKICAgIGlmIHJlc3Auc3RhdHVzX2NvZGUgPT0gMjAwOgogICAgICAgIGRhdGFbInNoYSJdID0gcmVzcC5qc29uKCkuZ2V0KCJzaGEiKQogICAgcHV0ID0gcmVxdWVzdHMucHV0KHVybCwgaGVhZGVycz1oZWFkZXJzLCBqc29uPWRhdGEpCiAgICBpZiBwdXQuc3RhdHVzX2NvZGUgaW4gKDIwMCwgMjAxKToKICAgICAgICBwcmludCgiVVJMIGNvbW1pdHRlZCB0byBHaXRIdWIiLCBmbHVzaD1UcnVlKQogICAgZWxzZToKICAgICAgICBwcmludChmIkZhaWxlZCB0byBjb21taXQ6IHtwdXQuc3RhdHVzX2NvZGV9IHtwdXQudGV4dH0iLCBmbHVzaD1UcnVlKQoKT1VUUFVUX0RJUiA9IFBhdGgoIi9rYWdnbGUvd29ya2luZyIpCk9VVFBVVF9ESVIubWtkaXIocGFyZW50cz1UcnVlLCBleGlzdF9vaz1UcnVlKQpMT0dfRklMRSA9IE9VVFBVVF9ESVIgLyAic2V0dXAubG9nIgoKZGVmIGxvZyhtc2cpOgogICAgcHJpbnQobXNnLCBmbHVzaD1UcnVlKQogICAgd2l0aCBMT0dfRklMRS5vcGVuKCJhIikgYXMgZjoKICAgICAgICBmLndyaXRlKHN0cihtc2cpICsgIlxuIikKCmxvZygiSW5zdGFsbGluZyB6c3RkLi4uIikKc3VicHJvY2Vzcy5ydW4oImFwdC1nZXQgdXBkYXRlIC1xcSAmJiBhcHQtZ2V0IGluc3RhbGwgLXkgLXFxIHpzdGQiLCBzaGVsbD1UcnVlLCBjaGVjaz1UcnVlKQoKbG9nKCJJbnN0YWxsaW5nIE9sbGFtYS4uLiIpCnN1YnByb2Nlc3MucnVuKCJjdXJsIC1mc1NMIGh0dHBzOi8vb2xsYW1hLmNvbS9pbnN0YWxsLnNoIHwgc2giLCBzaGVsbD1UcnVlLCBjaGVjaz1UcnVlKQoKbG9nKCJTdGFydGluZyBPbGxhbWEgc2VydmVyLi4uIikKb3MuZW52aXJvblsiT0xMQU1BX0hPU1QiXSA9ICIwLjAuMC4wOjExNDM0Igpvcy5lbnZpcm9uWyJPTExBTUFfT1JJR0lOUyJdID0gIioiCm9sbGFtYV9wcm9jID0gc3VicHJvY2Vzcy5Qb3BlbigKICAgIFsib2xsYW1hIiwgInNlcnZlIl0sCiAgICBzdGRvdXQ9c3VicHJvY2Vzcy5QSVBFLAogICAgc3RkZXJyPXN1YnByb2Nlc3MuUElQRSwKKQoKbG9nKCJXYWl0aW5nIGZvciBPbGxhbWEgc2VydmVyLi4uIikKcmVhZHkgPSBGYWxzZQpmb3IgXyBpbiByYW5nZSgzMCk6CiAgICB0cnk6CiAgICAgICAgaWYgcmVxdWVzdHMuZ2V0KCJodHRwOi8vMTI3LjAuMC4xOjExNDM0LyIsIHRpbWVvdXQ9Mikuc3RhdHVzX2NvZGUgPT0gMjAwOgogICAgICAgICAgICBsb2coIk9sbGFtYSBzZXJ2ZXIgcmVhZHkiKQogICAgICAgICAgICByZWFkeSA9IFRydWUKICAgICAgICAgICAgYnJlYWsKICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgcGFzcwogICAgdGltZS5zbGVlcCgyKQppZiBub3QgcmVhZHk6CiAgICByYWlzZSBSdW50aW1lRXJyb3IoIk9sbGFtYSBzZXJ2ZXIgZGlkIG5vdCBzdGFydCIpCgpNT0RFTCA9ICJodWlodWlfYWkvcXdlbjIuNS1jb2Rlci1hYmxpdGVyYXRlIgpsb2coZiJQdWxsaW5nIG1vZGVsIHtNT0RFTH0uLi4iKQpzdWJwcm9jZXNzLnJ1bihbIm9sbGFtYSIsICJwdWxsIiwgTU9ERUxdLCBjaGVjaz1UcnVlKQoKbG9nKCJEb3dubG9hZGluZyBjbG91ZGZsYXJlZC4uLiIpCnN1YnByb2Nlc3MucnVuKAogICAgIndnZXQgLXEgaHR0cHM6Ly9naXRodWIuY29tL2Nsb3VkZmxhcmUvY2xvdWRmbGFyZWQvcmVsZWFzZXMvbGF0ZXN0L2Rvd25sb2FkL2Nsb3VkZmxhcmVkLWxpbnV4LWFtZDY0IC1PIGNsb3VkZmxhcmVkIiwKICAgIHNoZWxsPVRydWUsIGNoZWNrPVRydWUsCikKc3VicHJvY2Vzcy5ydW4oImNobW9kICt4IGNsb3VkZmxhcmVkIiwgc2hlbGw9VHJ1ZSwgY2hlY2s9VHJ1ZSkKc3VicHJvY2Vzcy5ydW4oIm12IGNsb3VkZmxhcmVkIC91c3IvbG9jYWwvYmluLyIsIHNoZWxsPVRydWUsIGNoZWNrPVRydWUpCgpsb2coIlN0YXJ0aW5nIENsb3VkZmxhcmUgdHVubmVsLi4uIikKdHVubmVsID0gc3VicHJvY2Vzcy5Qb3BlbigKICAgIFsiY2xvdWRmbGFyZWQiLCAidHVubmVsIiwgIi0tdXJsIiwgImh0dHA6Ly8xMjcuMC4wLjE6MTE0MzQiLCAiLS1uby1hdXRvdXBkYXRlIl0sCiAgICBzdGRvdXQ9c3VicHJvY2Vzcy5QSVBFLCBzdGRlcnI9c3VicHJvY2Vzcy5TVERPVVQsIHRleHQ9VHJ1ZSwgYnVmc2l6ZT0xLAopCgpwYXR0ZXJuID0gcmUuY29tcGlsZShyImh0dHBzOi8vWy1hLXpBLVowLTldK1wudHJ5Y2xvdWRmbGFyZVwuY29tIikKdHVubmVsX3VybCA9IE5vbmUKZm9yIGxpbmUgaW4gdHVubmVsLnN0ZG91dDoKICAgIGxpbmUgPSBsaW5lLnJzdHJpcCgpCiAgICBsb2cobGluZSkKICAgIG1hdGNoID0gcGF0dGVybi5zZWFyY2gobGluZSkKICAgIGlmIG1hdGNoOgogICAgICAgIHR1bm5lbF91cmwgPSBtYXRjaC5ncm91cCgwKQogICAgICAgIGxvZyhmIlRVTk5FTF9VUkw9e3R1bm5lbF91cmx9IikKICAgICAgICBicmVhawoKaWYgbm90IHR1bm5lbF91cmw6CiAgICByYWlzZSBSdW50aW1lRXJyb3IoIk5vIHR1bm5lbCBVUkwgZm91bmQiKQoKaWYgR0lUSFVCX1RPS0VOIGFuZCBHSVRIVUJfUkVQTzoKICAgIGNvbW1pdF90b19naXRodWIodHVubmVsX3VybCkKZWxzZToKICAgIGxvZygiTWlzc2luZyBHSVRIVUJfVE9LRU4gb3IgR0lUSFVCX1JFUE8iKQoKbG9nKCJUdW5uZWwgZXN0YWJsaXNoZWQuIEtlZXBpbmcga2VybmVsIGFsaXZlIGZvciAyIGhvdXJzLi4uIikKdGltZS5zbGVlcCg3MjAwKQo="
         run: |
           mkdir -p kaggle-kernel
           cd kaggle-kernel
@@ -72,107 +74,14 @@ jobs:
           }
           EOF
 
-          cat > script.py << 'EOF'
-          import os
-          import subprocess
-          import sys
-          import time
-          import requests
-          import re
-          import base64
-          from pathlib import Path
+          # Decode the script from base64 — this preserves Python indentation
+          # exactly regardless of YAML / shell quoting rules.
+          printf '%s' "$SCRIPT_B64" | base64 -d > script.py
 
-          GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-          GITHUB_REPO = os.environ.get("GITHUB_REPO")
-          FILE_PATH = "frontend/ollama_url.txt"
-
-          def commit_to_github(content):
-              url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{FILE_PATH}"
-              headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-              data = {
-                  "message": "Update Ollama URL from Kaggle GPU",
-                  "content": base64.b64encode(content.encode()).decode(),
-                  "branch": "main",
-              }
-              # Get existing file SHA if it exists
-              resp = requests.get(url, headers=headers)
-              if resp.status_code == 200:
-                  data["sha"] = resp.json().get("sha")
-              put = requests.put(url, headers=headers, json=data)
-              if put.status_code in (200, 201):
-                  print("✅ URL committed to GitHub")
-              else:
-                  print(f"❌ Failed to commit: {put.status_code}")
-
-          OUTPUT_DIR = Path("/kaggle/working")
-          OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-          LOG_FILE = OUTPUT_DIR / "setup.log"
-
-          def log(msg):
-              print(msg, flush=True)
-              with LOG_FILE.open("a") as f:
-                  f.write(msg + "\n")
-
-          log("Installing zstd...")
-          subprocess.run("apt-get update -qq && apt-get install -y -qq zstd", shell=True, check=True)
-
-          log("Installing Ollama...")
-          subprocess.run("curl -fsSL https://ollama.com/install.sh | sh", shell=True, check=True)
-
-          log("Starting Ollama server...")
-          os.environ["OLLAMA_HOST"] = "0.0.0.0:11434"
-          os.environ["OLLAMA_ORIGINS"] = "*"
-          subprocess.Popen(["ollama", "serve"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-          log("Waiting for Ollama server...")
-          for _ in range(30):
-              try:
-                  if requests.get("http://127.0.0.1:11434/", timeout=2).status_code == 200:
-                      log("Ollama server ready")
-                      break
-              except:
-                  pass
-              time.sleep(2)
-          else:
-              raise RuntimeError("Ollama server did not start")
-
-          MODEL = "huihui_ai/qwen2.5-coder-abliterate"
-          log(f"Pulling model {MODEL}...")
-          subprocess.run(["ollama", "pull", MODEL], check=True)
-
-          log("Downloading cloudflared...")
-          subprocess.run("wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared", shell=True)
-          subprocess.run("chmod +x cloudflared", shell=True)
-          subprocess.run("mv cloudflared /usr/local/bin/", shell=True)
-
-          log("Starting Cloudflare tunnel...")
-          tunnel = subprocess.Popen(
-              ["cloudflared", "tunnel", "--url", "http://127.0.0.1:11434", "--no-autoupdate"],
-              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
-          )
-
-          pattern = re.compile(r"https://[-a-zA-Z0-9]+\.trycloudflare\.com")
-          tunnel_url = None
-          for line in tunnel.stdout:
-              line = line.rstrip()
-              log(line)
-              match = pattern.search(line)
-              if match:
-                  tunnel_url = match.group(0)
-                  log(f"TUNNEL_URL={tunnel_url}")
-                  break
-
-          if not tunnel_url:
-              raise RuntimeError("No tunnel URL found")
-
-          if GITHUB_TOKEN and GITHUB_REPO:
-              commit_to_github(tunnel_url)
-          else:
-              log("❌ Missing GITHUB_TOKEN or GITHUB_REPO")
-
-          log("Tunnel established. Keeping kernel alive for 2 hours...")
-          time.sleep(7200)
-          EOF
+          echo "--- Generated script.py (first 25 lines) ---"
+          head -n 25 script.py
+          echo "--- Syntax check ---"
+          python3 -m py_compile script.py && echo "✅ script.py compiles"
 
       - name: Push kernel to Kaggle
         run: |
