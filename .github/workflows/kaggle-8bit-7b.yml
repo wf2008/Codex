@@ -94,6 +94,7 @@ jobs:
                   "content": base64.b64encode(content.encode()).decode(),
                   "branch": "main",
               }
+              # Get existing file SHA if it exists
               resp = requests.get(url, headers=headers)
               if resp.status_code == 200:
                   data["sha"] = resp.json().get("sha")
