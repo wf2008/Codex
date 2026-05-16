@@ -1,4 +1,4 @@
-name: Kaggle 8‑bit Qwen 7B GPU Tunnel
+name: Kaggle GPU Model Server (2h)
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 jobs:
-  start-tunnel:
+  start-server:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -16,132 +16,105 @@ jobs:
       - name: Install Kaggle CLI
         run: pip install kaggle
 
-      - name: Set up Kaggle API token
+      - name: Set up Kaggle API token (new format)
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
         run: |
           mkdir -p ~/.kaggle
           echo "$KAGGLE_API_TOKEN" > ~/.kaggle/access_token
           chmod 600 ~/.kaggle/access_token
+          # Also set environment variable for the CLI
           echo "KAGGLE_API_TOKEN=$KAGGLE_API_TOKEN" >> $GITHUB_ENV
 
-      # Generate a unique kernel ID using GitHub run ID
-      - name: Set kernel ID
-        id: kernel_id
-        run: echo "id=qwen-8bit-${{ github.run_id }}" >> $GITHUB_OUTPUT
+      - name: Generate unique kernel name
+        id: kernel
+        run: echo "name=qwen-server-${{ github.run_id }}" >> $GITHUB_OUTPUT
 
-      - name: Create Kaggle kernel
+      - name: Create Kaggle kernel folder
         run: |
           mkdir -p kaggle-kernel
           cd kaggle-kernel
 
-          # Replace placeholder in metadata with the unique ID
+          # Create kernel metadata with the unique ID (format: username/kernel-name)
+          # We need a dummy username because Kaggle CLI still expects it in metadata.
+          # The actual authentication is via token, so any placeholder works.
           cat > kernel-metadata.json << EOF
           {
-           "id": "${{ steps.kernel_id.outputs.id }}",
-           "title": "Qwen 7B 8-bit Tunnel",
-           "code_file": "kernel.ipynb",
+           "id": "dummy/${{ steps.kernel.outputs.name }}",
+           "title": "Qwen 7B Server (2h)",
+           "code_file": "server.py",
            "language": "python",
-           "kernel_type": "notebook",
+           "kernel_type": "script",
            "is_private": true,
            "enable_gpu": true,
-           "enable_internet": true,
-           "dataset_sources": [],
-           "competition_sources": [],
-           "kernel_sources": []
+           "enable_internet": true
           }
           EOF
 
-          # Notebook content (same as before)
-          cat > kernel.ipynb << 'EOF'
-          {
-           "cells": [
-            {
-             "cell_type": "code",
-             "source": [
-              "import os, subprocess, time, requests\n",
-              "!pip install -q vllm auto-gptq cloudflared\n",
-              "\n",
-              "# Use a pre‑quantized 8‑bit GPTQ model (change if you have your own)\n",
-              "MODEL_NAME = \"TheBloke/Qwen2.5-Coder-7B-Instruct-GPTQ-Int8\"\n",
-              "\n",
-              "# Start vLLM server in 8‑bit mode\n",
-              "server = subprocess.Popen([\n",
-              "    'python', '-m', 'vllm.entrypoints.openai.api_server',\n",
-              "    '--model', MODEL_NAME,\n",
-              "    '--port', '8000',\n",
-              "    '--max-model-len', '4096',\n",
-              "    '--gpu-memory-utilization', '0.9',\n",
-              "    '--quantization', 'gptq',\n",
-              "    '--dtype', 'float16',\n",
-              "    '--trust-remote-code'\n",
-              "], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)\n",
-              "\n",
-              "# Wait for server (2 minutes)\n",
-              "for i in range(120):\n",
-              "    try:\n",
-              "        r = requests.get('http://localhost:8000/health', timeout=2)\n",
-              "        if r.status_code == 200:\n",
-              "            break\n",
-              "    except:\n",
-              "        pass\n",
-              "    time.sleep(1)\n",
-              "\n",
-              "# Cloudflare tunnel\n",
-              "tunnel = subprocess.Popen([\n",
-              "    'cloudflared', 'tunnel', '--url', 'http://localhost:8000',\n",
-              "    '--no-autoupdate'\n",
-              "], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)\n",
-              "\n",
-              "tunnel_url = None\n",
-              "for line in tunnel.stdout:\n",
-              "    if 'https://' in line and '.trycloudflare.com' in line:\n",
-              "        parts = line.split('https://')\n",
-              "        if len(parts) > 1:\n",
-              "            tunnel_url = 'https://' + parts[1].split()[0]\n",
-              "            break\n",
-              "\n",
-              "if tunnel_url:\n",
-              "    with open('/kaggle/working/tunnel_url.txt', 'w') as f:\n",
-              "        f.write(tunnel_url)\n",
-              "    print(f'TUNNEL_URL={tunnel_url}')\n",
-              "\n",
-              "# Keep kernel alive\n",
-              "while True:\n",
-              "    time.sleep(3600)\n"
-             ]
-            }
-           ],
-           "metadata": {
-            "kernelspec": {
-             "display_name": "Python 3",
-             "language": "python",
-             "name": "python3"
-            }
-           },
-           "nbformat": 4,
-           "nbformat_minor": 4
-          }
+          # The Python script that runs the model and tunnel
+          cat > server.py << 'EOF'
+          import subprocess, time, requests, os
+
+          # Install dependencies
+          subprocess.run(["pip", "install", "-q", "vllm", "cloudflared"])
+
+          # Model (8‑bit GPTQ, fits in T4)
+          MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct-GPTQ-Int8"
+
+          # Start vLLM server
+          server = subprocess.Popen([
+              "python", "-m", "vllm.entrypoints.openai.api_server",
+              "--model", MODEL, "--port", "8000", "--max-model-len", "4096",
+              "--gpu-memory-utilization", "0.9", "--quantization", "gptq",
+              "--dtype", "float16", "--trust-remote-code"
+          ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+          # Wait for server
+          for _ in range(180):
+              try:
+                  if requests.get("http://localhost:8000/health", timeout=2).status_code == 200:
+                      break
+              except:
+                  pass
+              time.sleep(1)
+
+          # Start Cloudflare tunnel
+          tunnel = subprocess.Popen(
+              ["cloudflared", "tunnel", "--url", "http://localhost:8000", "--no-autoupdate"],
+              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+          )
+
+          # Capture tunnel URL
+          url = None
+          for line in tunnel.stdout:
+              if "https://" in line and ".trycloudflare.com" in line:
+                  url = line.split("https://")[1].split()[0]
+                  url = "https://" + url
+                  break
+          print(f"TUNNEL_URL={url}")
+
+          # Keep kernel alive for 2 hours (7200 seconds)
+          time.sleep(7200)
           EOF
 
-      - name: Push kernel to Kaggle (no --force)
+      - name: Push kernel to Kaggle
         run: |
           cd kaggle-kernel
           kaggle kernels push -p .
 
-      - name: Wait for tunnel URL and capture
+      - name: Wait for kernel to produce URL (max 10 min)
         id: get_url
         run: |
-          KERNEL_ID="${{ steps.kernel_id.outputs.id }}"
+          KERNEL_ID="dummy/${{ steps.kernel.outputs.name }}"
           URL=""
           for i in {1..120}; do
-            # Download kernel logs (output)
+            # Download kernel logs
             kaggle kernels output "$KERNEL_ID" -p . 2>/dev/null || true
             if [ -f kernel.log ] && grep -q "TUNNEL_URL=" kernel.log; then
               URL=$(grep "TUNNEL_URL=" kernel.log | head -1 | cut -d= -f2)
               break
             fi
-            echo "Waiting for tunnel... attempt $i/120"
+            echo "Waiting for tunnel... ($i/120)"
             sleep 5
           done
           if [ -z "$URL" ]; then
@@ -150,15 +123,12 @@ jobs:
           fi
           echo "url=$URL" >> $GITHUB_OUTPUT
 
-      - name: Commit tunnel URL to repo
+      - name: Commit URL to repository
         run: |
           mkdir -p frontend
           echo "${{ steps.get_url.outputs.url }}" > frontend/ollama_url.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add frontend/ollama_url.txt
-          git commit -m "Update Ollama URL from Kaggle (8‑bit) [skip ci]" || echo "No changes"
+          git commit -m "Update Ollama URL from Kaggle (2h) [skip ci]" || echo "No changes"
           git push
-
-      - name: Keep runner alive (optional, remove if not needed)
-        run: sleep 7200
