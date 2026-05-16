@@ -23,21 +23,18 @@ jobs:
           mkdir -p ~/.kaggle
           echo "$KAGGLE_API_TOKEN" > ~/.kaggle/access_token
           chmod 600 ~/.kaggle/access_token
-          # Also set environment variable for the CLI
           echo "KAGGLE_API_TOKEN=$KAGGLE_API_TOKEN" >> $GITHUB_ENV
 
       - name: Generate unique kernel name
         id: kernel
-        run: echo "name=qwen-server-${{ github.run_id }}" >> $GITHUB_OUTPUT
+        run: echo "name=qwen-${{ github.run_id }}" >> $GITHUB_OUTPUT
 
       - name: Create Kaggle kernel folder
         run: |
           mkdir -p kaggle-kernel
           cd kaggle-kernel
 
-          # Create kernel metadata with the unique ID (format: username/kernel-name)
-          # We need a dummy username because Kaggle CLI still expects it in metadata.
-          # The actual authentication is via token, so any placeholder works.
+          # Metadata – dummy username is required by Kaggle CLI
           cat > kernel-metadata.json << EOF
           {
            "id": "dummy/${{ steps.kernel.outputs.name }}",
@@ -51,26 +48,25 @@ jobs:
           }
           EOF
 
-          # The Python script that runs the model and tunnel
+          # The Python script – uses YOUR model
           cat > server.py << 'EOF'
-          import subprocess, time, requests, os
+          import subprocess, time, requests, sys
 
-          # Install dependencies
-          subprocess.run(["pip", "install", "-q", "vllm", "cloudflared"])
+          print("Installing dependencies...")
+          subprocess.run([sys.executable, "-m", "pip", "install", "-q", "vllm", "cloudflared"])
 
-          # Model (8‑bit GPTQ, fits in T4)
-          MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct-GPTQ-Int8"
+          # YOUR MODEL NAME
+          MODEL = "huihui_ai/qwen2.5-coder-abliterate"
 
-          # Start vLLM server
+          print("Starting vLLM server...")
           server = subprocess.Popen([
               "python", "-m", "vllm.entrypoints.openai.api_server",
               "--model", MODEL, "--port", "8000", "--max-model-len", "4096",
-              "--gpu-memory-utilization", "0.9", "--quantization", "gptq",
-              "--dtype", "float16", "--trust-remote-code"
+              "--gpu-memory-utilization", "0.9", "--trust-remote-code"
           ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-          # Wait for server
-          for _ in range(180):
+          # Wait for server to be ready (2 minutes)
+          for _ in range(120):
               try:
                   if requests.get("http://localhost:8000/health", timeout=2).status_code == 200:
                       break
@@ -78,22 +74,26 @@ jobs:
                   pass
               time.sleep(1)
 
-          # Start Cloudflare tunnel
+          print("Starting Cloudflare tunnel...")
           tunnel = subprocess.Popen(
               ["cloudflared", "tunnel", "--url", "http://localhost:8000", "--no-autoupdate"],
               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
           )
 
-          # Capture tunnel URL
+          # Extract tunnel URL
           url = None
           for line in tunnel.stdout:
               if "https://" in line and ".trycloudflare.com" in line:
-                  url = line.split("https://")[1].split()[0]
-                  url = "https://" + url
-                  break
-          print(f"TUNNEL_URL={url}")
+                  parts = line.split("https://")
+                  if len(parts) > 1:
+                      url = "https://" + parts[1].split()[0]
+                      break
+          if url:
+              print(f"TUNNEL_URL={url}")
+          else:
+              print("TUNNEL_URL=ERROR")
 
-          # Keep kernel alive for 2 hours (7200 seconds)
+          # Keep kernel alive for 2 hours
           time.sleep(7200)
           EOF
 
@@ -102,7 +102,7 @@ jobs:
           cd kaggle-kernel
           kaggle kernels push -p .
 
-      - name: Wait for kernel to produce URL (max 10 min)
+      - name: Wait for tunnel URL (max 10 minutes)
         id: get_url
         run: |
           KERNEL_ID="dummy/${{ steps.kernel.outputs.name }}"
@@ -112,12 +112,14 @@ jobs:
             kaggle kernels output "$KERNEL_ID" -p . 2>/dev/null || true
             if [ -f kernel.log ] && grep -q "TUNNEL_URL=" kernel.log; then
               URL=$(grep "TUNNEL_URL=" kernel.log | head -1 | cut -d= -f2)
-              break
+              if [ "$URL" != "ERROR" ]; then
+                break
+              fi
             fi
             echo "Waiting for tunnel... ($i/120)"
             sleep 5
           done
-          if [ -z "$URL" ]; then
+          if [ -z "$URL" ] || [ "$URL" = "ERROR" ]; then
             echo "❌ Failed to get tunnel URL"
             exit 1
           fi
@@ -130,5 +132,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add frontend/ollama_url.txt
-          git commit -m "Update Ollama URL from Kaggle (2h) [skip ci]" || echo "No changes"
+          git commit -m "Update Ollama URL from Kaggle [skip ci]" || echo "No changes"
           git push
