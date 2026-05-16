@@ -2,8 +2,6 @@ name: Kaggle 8‑bit Qwen 7B GPU Tunnel
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: '0 */6 * * *'
 
 permissions:
   contents: write
@@ -18,9 +16,6 @@ jobs:
       - name: Install Kaggle CLI
         run: pip install kaggle
 
-      # ------------------------------------------------------------
-      # Configure Kaggle API token (new format)
-      # ------------------------------------------------------------
       - name: Set up Kaggle API token
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
@@ -30,15 +25,34 @@ jobs:
           chmod 600 ~/.kaggle/access_token
           echo "KAGGLE_API_TOKEN=$KAGGLE_API_TOKEN" >> $GITHUB_ENV
 
-      # ------------------------------------------------------------
-      # Create dynamic Kaggle kernel (notebook)
-      # ------------------------------------------------------------
+      # Generate a unique kernel ID using GitHub run ID
+      - name: Set kernel ID
+        id: kernel_id
+        run: echo "id=qwen-8bit-${{ github.run_id }}" >> $GITHUB_OUTPUT
+
       - name: Create Kaggle kernel
         run: |
           mkdir -p kaggle-kernel
           cd kaggle-kernel
 
-          # The notebook content
+          # Replace placeholder in metadata with the unique ID
+          cat > kernel-metadata.json << EOF
+          {
+           "id": "${{ steps.kernel_id.outputs.id }}",
+           "title": "Qwen 7B 8-bit Tunnel",
+           "code_file": "kernel.ipynb",
+           "language": "python",
+           "kernel_type": "notebook",
+           "is_private": true,
+           "enable_gpu": true,
+           "enable_internet": true,
+           "dataset_sources": [],
+           "competition_sources": [],
+           "kernel_sources": []
+          }
+          EOF
+
+          # Notebook content (same as before)
           cat > kernel.ipynb << 'EOF'
           {
            "cells": [
@@ -48,11 +62,8 @@ jobs:
               "import os, subprocess, time, requests\n",
               "!pip install -q vllm auto-gptq cloudflared\n",
               "\n",
-              "# =========================================================\n",
-              "# Use a pre‑quantized 8‑bit GPTQ model (change if you have your own 8‑bit version)\n",
-              "# For your exact model, you would need to quantize it first.\n",
+              "# Use a pre‑quantized 8‑bit GPTQ model (change if you have your own)\n",
               "MODEL_NAME = \"TheBloke/Qwen2.5-Coder-7B-Instruct-GPTQ-Int8\"\n",
-              "# =========================================================\n",
               "\n",
               "# Start vLLM server in 8‑bit mode\n",
               "server = subprocess.Popen([\n",
@@ -113,42 +124,19 @@ jobs:
           }
           EOF
 
-          # Kernel metadata
-          cat > kernel-metadata.json << 'EOF'
-          {
-           "id": "qwen-8bit-tunnel",
-           "title": "Qwen 7B 8‑bit Tunnel",
-           "code_file": "kernel.ipynb",
-           "language": "python",
-           "kernel_type": "notebook",
-           "is_private": true,
-           "enable_gpu": true,
-           "enable_internet": true,
-           "dataset_sources": [],
-           "competition_sources": [],
-           "kernel_sources": []
-          }
-          EOF
-
-      # ------------------------------------------------------------
-      # Push kernel to Kaggle
-      # ------------------------------------------------------------
-      - name: Push kernel to Kaggle
+      - name: Push kernel to Kaggle (no --force)
         run: |
           cd kaggle-kernel
-          kaggle kernels push --force -p .
+          kaggle kernels push -p .
 
-      # ------------------------------------------------------------
-      # Wait for tunnel URL and capture it
-      # ------------------------------------------------------------
-      - name: Wait for tunnel URL
+      - name: Wait for tunnel URL and capture
         id: get_url
         run: |
-          cd kaggle-kernel
+          KERNEL_ID="${{ steps.kernel_id.outputs.id }}"
           URL=""
           for i in {1..120}; do
-            # Download logs
-            kaggle kernels output qwen-8bit-tunnel -p . 2>/dev/null || true
+            # Download kernel logs (output)
+            kaggle kernels output "$KERNEL_ID" -p . 2>/dev/null || true
             if [ -f kernel.log ] && grep -q "TUNNEL_URL=" kernel.log; then
               URL=$(grep "TUNNEL_URL=" kernel.log | head -1 | cut -d= -f2)
               break
@@ -162,10 +150,7 @@ jobs:
           fi
           echo "url=$URL" >> $GITHUB_OUTPUT
 
-      # ------------------------------------------------------------
-      # Commit URL to frontend/ollama_url.txt
-      # ------------------------------------------------------------
-      - name: Commit tunnel URL
+      - name: Commit tunnel URL to repo
         run: |
           mkdir -p frontend
           echo "${{ steps.get_url.outputs.url }}" > frontend/ollama_url.txt
@@ -175,9 +160,5 @@ jobs:
           git commit -m "Update Ollama URL from Kaggle (8‑bit) [skip ci]" || echo "No changes"
           git push
 
-      # ------------------------------------------------------------
-      # Optional: Keep runner alive for 12 hours to monitor
-      # (Remove this line if you want the workflow to finish immediately)
-      # ------------------------------------------------------------
-      - name: Keep runner alive (optional)
+      - name: Keep runner alive (optional, remove if not needed)
         run: sleep 7200
