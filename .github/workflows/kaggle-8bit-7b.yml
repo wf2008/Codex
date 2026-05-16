@@ -163,74 +163,78 @@ jobs:
           cd kaggle-kernel
           kaggle kernels push -p .
 
-      - name: Wait for kernel run to start
+      - name: Wait for kernel to start running
         env:
           KERNEL_ID: ${{ steps.kernel.outputs.id }}
         run: |
           for i in $(seq 1 60); do
             STATUS=$(kaggle kernels status "$KERNEL_ID" 2>/dev/null || true)
             echo "$STATUS"
-            if echo "$STATUS" | grep -Eiq 'running|complete'; then
+            if echo "$STATUS" | grep -Eiq 'running'; then
+              echo "Kernel is now running."
               exit 0
             fi
-            echo "Waiting for kernel start... ($i/60)"
+            echo "Waiting for kernel to start... ($i/60)"
             sleep 10
           done
-
           echo "❌ Kernel did not start in time"
           exit 1
 
-      - name: Wait for tunnel URL and capture it (plus fetch all logs)
+      - name: Stream logs and wait for tunnel URL (live tail)
         id: get_url
         env:
           KERNEL_ID: ${{ steps.kernel.outputs.id }}
         run: |
           rm -rf kaggle-output
           mkdir -p kaggle-output
-
           URL=""
+
+          # We'll keep fetching output files every 10 seconds and print new lines.
+          # Keep track of the last size of each log file to avoid re-printing.
+          last_size_server=0
+          last_size_cf=0
+
           for i in $(seq 1 120); do
-            rm -f kaggle-output/* || true
+            # Download current output files (including logs)
             kaggle kernels output "$KERNEL_ID" -p kaggle-output --force --quiet || true
 
+            # Print new lines from server_status.log
+            if [ -f kaggle-output/server_status.log ]; then
+              current_size=$(stat -c%s kaggle-output/server_status.log)
+              if [ $current_size -gt $last_size_server ]; then
+                tail -c +$((last_size_server+1)) kaggle-output/server_status.log
+                last_size_server=$current_size
+              fi
+            fi
+
+            # Print new lines from cloudflared.log
+            if [ -f kaggle-output/cloudflared.log ]; then
+              current_size=$(stat -c%s kaggle-output/cloudflared.log)
+              if [ $current_size -gt $last_size_cf ]; then
+                tail -c +$((last_size_cf+1)) kaggle-output/cloudflared.log
+                last_size_cf=$current_size
+              fi
+            fi
+
+            # Check if tunnel_url.txt exists and contains a valid URL
             if [ -f kaggle-output/tunnel_url.txt ]; then
               URL=$(tr -d '\r\n' < kaggle-output/tunnel_url.txt)
               if [ -n "$URL" ] && [ "$URL" != "ERROR_SERVER_START" ] && [ "$URL" != "ERROR_TUNNEL_START" ]; then
-                echo "Found tunnel URL: $URL"
+                echo "✅ Found tunnel URL: $URL"
                 break
               fi
             fi
 
-            echo "Waiting for tunnel... ($i/120)"
+            echo "⏳ Still waiting for tunnel... ($i/120)"
             sleep 10
           done
 
           if [ -z "$URL" ]; then
-            echo "❌ Failed to get tunnel URL"
+            echo "❌ Failed to get tunnel URL within timeout."
             exit 1
           fi
 
           echo "url=$URL" >> "$GITHUB_OUTPUT"
-
-          # ==================================================
-          # Fetch and display all logs from the kernel output
-          # ==================================================
-          echo "========================================="
-          echo "📄 server_status.log:"
-          if [ -f kaggle-output/server_status.log ]; then
-            cat kaggle-output/server_status.log
-          else
-            echo " (not found)"
-          fi
-
-          echo "========================================="
-          echo "📄 cloudflared.log:"
-          if [ -f kaggle-output/cloudflared.log ]; then
-            cat kaggle-output/cloudflared.log
-          else
-            echo " (not found)"
-          fi
-          echo "========================================="
 
       - name: Commit URL to repository
         run: |
