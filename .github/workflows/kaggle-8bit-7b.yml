@@ -1,0 +1,165 @@
+name: Run 8‑bit Qwen 7B on Kaggle GPU
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 */6 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  start-tunnel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Kaggle CLI
+        run: pip install kaggle
+
+      - name: Create Kaggle kernel
+        run: |
+          mkdir -p kaggle-kernel
+          cd kaggle-kernel
+
+          cat > kernel.ipynb << 'EOF'
+          {
+           "cells": [
+            {
+             "cell_type": "code",
+             "source": [
+              "import os, subprocess, time, requests\n",
+              "# Install vLLM with GPTQ support (for 8‑bit)\n",
+              "!pip install -q vllm auto-gptq optimum\n",
+              "!pip install -q cloudflared\n",
+              "\n",
+              "# ==================================================\n",
+              "# IMPORTANT: Replace with your actual 8‑bit model ID\n",
+              "# ==================================================\n",
+              "# Example: \"TheBloke/Qwen2.5-Coder-7B-Instruct-GPTQ-Int8\"\n",
+              "# If your model is already 8‑bit GPTQ, put its HF name here.\n",
+              "MODEL_NAME = \"TheBloke/Qwen2.5-Coder-7B-Instruct-GPTQ-Int8\"\n",
+              "# ==================================================\n",
+              "\n",
+              "# Start vLLM server in 8‑bit mode (GPTQ)\n",
+              "server = subprocess.Popen([\n",
+              "    'python', '-m', 'vllm.entrypoints.openai.api_server',\n",
+              "    '--model', MODEL_NAME,\n",
+              "    '--port', '8000',\n",
+              "    '--max-model-len', '4096',\n",
+              "    '--gpu-memory-utilization', '0.9',\n",
+              "    '--quantization', 'gptq',\n",
+              "    '--dtype', 'float16',\n",
+              "    '--trust-remote-code'\n",
+              "], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)\n",
+              "\n",
+              "# Wait for server (up to 2 minutes)\n",
+              "for i in range(120):\n",
+              "    try:\n",
+              "        r = requests.get('http://localhost:8000/health', timeout=2)\n",
+              "        if r.status_code == 200:\n",
+              "            break\n",
+              "    except:\n",
+              "        pass\n",
+              "    time.sleep(1)\n",
+              "\n",
+              "# Cloudflare tunnel\n",
+              "tunnel = subprocess.Popen([\n",
+              "    'cloudflared', 'tunnel', '--url', 'http://localhost:8000',\n",
+              "    '--no-autoupdate'\n",
+              "], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)\n",
+              "\n",
+              "tunnel_url = None\n",
+              "for line in tunnel.stdout:\n",
+              "    if 'https://' in line and '.trycloudflare.com' in line:\n",
+              "        parts = line.split('https://')\n",
+              "        if len(parts) > 1:\n",
+              "            tunnel_url = 'https://' + parts[1].split()[0]\n",
+              "            break\n",
+              "\n",
+              "if tunnel_url:\n",
+              "    with open('/kaggle/working/tunnel_url.txt', 'w') as f:\n",
+              "        f.write(tunnel_url)\n",
+              "    print(f'TUNNEL_URL={tunnel_url}')\n",
+              "\n",
+              "# Keep kernel alive\n",
+              "while True:\n",
+              "    time.sleep(3600)\n"
+             ]
+            }
+           ],
+           "metadata": {
+            "kernelspec": {
+             "display_name": "Python 3",
+             "language": "python",
+             "name": "python3"
+            }
+           },
+           "nbformat": 4,
+           "nbformat_minor": 4
+          }
+          EOF
+
+          # Metadata for Kaggle
+          cat > kernel-metadata.json << 'EOF'
+          {
+           "id": "qwen-8bit-tunnel",
+           "title": "Qwen 7B 8‑bit Tunnel",
+           "code_file": "kernel.ipynb",
+           "language": "python",
+           "kernel_type": "notebook",
+           "is_private": true,
+           "enable_gpu": true,
+           "enable_internet": true,
+           "dataset_sources": [],
+           "competition_sources": [],
+           "kernel_sources": []
+          }
+          EOF
+
+      - name: Authenticate Kaggle
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+        run: |
+          mkdir -p ~/.kaggle
+          echo "{\"username\":\"$KAGGLE_USERNAME\",\"key\":\"$KAGGLE_KEY\"}" > ~/.kaggle/kaggle.json
+          chmod 600 ~/.kaggle/kaggle.json
+
+      - name: Push kernel to Kaggle
+        run: |
+          cd kaggle-kernel
+          kaggle kernels push --force -p .
+
+      - name: Wait for tunnel URL and commit
+        run: |
+          cd kaggle-kernel
+          URL=""
+          for i in {1..120}; do
+            kaggle kernels output qwen-8bit-tunnel -p . 2>/dev/null || true
+            if [ -f kernel.log ] && grep -q "TUNNEL_URL=" kernel.log; then
+              URL=$(grep "TUNNEL_URL=" kernel.log | head -1 | cut -d= -f2)
+              break
+            fi
+            echo "Waiting for tunnel... attempt $i/120"
+            sleep 5
+          done
+          if [ -z "$URL" ]; then
+            echo "❌ Tunnel URL not captured"
+            exit 1
+          fi
+          echo "URL=$URL" >> $GITHUB_ENV
+
+      - name: Commit URL to repo
+        run: |
+          mkdir -p frontend
+          echo "${{ env.URL }}" > frontend/ollama_url.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "actions@github.com"
+          git add frontend/ollama_url.txt
+          git commit -m "Update Ollama URL (8‑bit) [skip ci]" || echo "No changes"
+          git push
+
+      - name: Keep runner alive (optional)
+        run: sleep 7200
