@@ -1,4 +1,4 @@
-name: Kaggle GPU Model Server (2h)
+name: Kaggle GPU Model Server (No long sleep)
 
 on:
   workflow_dispatch:
@@ -124,7 +124,8 @@ jobs:
               time.sleep(5)
           else:
               URL_FILE.write_text("ERROR_SERVER_START\n", encoding="utf-8")
-              raise SystemExit("vLLM server did not become ready in time")
+              log("ERROR: vLLM server did not become ready")
+              sys.exit(1)
 
           log("Starting Cloudflare tunnel...")
           tunnel = subprocess.Popen(
@@ -153,9 +154,11 @@ jobs:
 
           if not tunnel_url:
               URL_FILE.write_text("ERROR_TUNNEL_START\n", encoding="utf-8")
-              raise SystemExit("Tunnel URL was not found in cloudflared output")
+              log("ERROR: No tunnel URL found")
+              sys.exit(1)
 
-          time.sleep(7200)
+          log("Tunnel established successfully. Exiting kernel (no long wait).")
+          # No sleep – kernel exits immediately after capturing URL.
           EOF
 
       - name: Push kernel to Kaggle
@@ -163,74 +166,66 @@ jobs:
           cd kaggle-kernel
           kaggle kernels push -p .
 
-      - name: Wait for kernel to start running
+      - name: Wait for kernel to finish (complete or error)
         env:
           KERNEL_ID: ${{ steps.kernel.outputs.id }}
         run: |
-          for i in $(seq 1 60); do
-            STATUS=$(kaggle kernels status "$KERNEL_ID" 2>/dev/null || true)
+          for i in $(seq 1 180); do
+            STATUS=$(kaggle kernels status "$KERNEL_ID" 2>/dev/null | grep -i "status" || echo "")
             echo "$STATUS"
-            if echo "$STATUS" | grep -Eiq 'running'; then
-              echo "Kernel is now running."
+            if echo "$STATUS" | grep -qi "complete"; then
+              echo "Kernel finished successfully"
+              exit 0
+            elif echo "$STATUS" | grep -qi "error"; then
+              echo "Kernel encountered an error"
               exit 0
             fi
-            echo "Waiting for kernel to start... ($i/60)"
-            sleep 10
+            echo "Waiting for kernel to finish... ($i/180)"
+            sleep 20
           done
-          echo "❌ Kernel did not start in time"
+          echo "❌ Kernel did not finish within timeout (60 minutes)"
           exit 1
 
-      - name: Stream logs and wait for tunnel URL (live tail)
+      - name: Download all output files and display logs
         id: get_url
         env:
           KERNEL_ID: ${{ steps.kernel.outputs.id }}
         run: |
           rm -rf kaggle-output
           mkdir -p kaggle-output
+
+          # Download all output files
+          kaggle kernels output "$KERNEL_ID" -p kaggle-output --force --quiet
+
+          echo "========================================="
+          echo "📄 server_status.log:"
+          if [ -f kaggle-output/server_status.log ]; then
+            cat kaggle-output/server_status.log
+          else
+            echo " (not found)"
+          fi
+
+          echo "========================================="
+          echo "📄 cloudflared.log:"
+          if [ -f kaggle-output/cloudflared.log ]; then
+            cat kaggle-output/cloudflared.log
+          else
+            echo " (not found)"
+          fi
+          echo "========================================="
+
+          # Extract tunnel URL if present
           URL=""
-
-          # We'll keep fetching output files every 10 seconds and print new lines.
-          # Keep track of the last size of each log file to avoid re-printing.
-          last_size_server=0
-          last_size_cf=0
-
-          for i in $(seq 1 120); do
-            # Download current output files (including logs)
-            kaggle kernels output "$KERNEL_ID" -p kaggle-output --force --quiet || true
-
-            # Print new lines from server_status.log
-            if [ -f kaggle-output/server_status.log ]; then
-              current_size=$(stat -c%s kaggle-output/server_status.log)
-              if [ $current_size -gt $last_size_server ]; then
-                tail -c +$((last_size_server+1)) kaggle-output/server_status.log
-                last_size_server=$current_size
-              fi
+          if [ -f kaggle-output/tunnel_url.txt ]; then
+            URL=$(tr -d '\r\n' < kaggle-output/tunnel_url.txt)
+            if [ "$URL" = "ERROR_SERVER_START" ] || [ "$URL" = "ERROR_TUNNEL_START" ]; then
+              echo "❌ Kernel reported an error: $URL"
+              exit 1
             fi
-
-            # Print new lines from cloudflared.log
-            if [ -f kaggle-output/cloudflared.log ]; then
-              current_size=$(stat -c%s kaggle-output/cloudflared.log)
-              if [ $current_size -gt $last_size_cf ]; then
-                tail -c +$((last_size_cf+1)) kaggle-output/cloudflared.log
-                last_size_cf=$current_size
-              fi
-            fi
-
-            # Check if tunnel_url.txt exists and contains a valid URL
-            if [ -f kaggle-output/tunnel_url.txt ]; then
-              URL=$(tr -d '\r\n' < kaggle-output/tunnel_url.txt)
-              if [ -n "$URL" ] && [ "$URL" != "ERROR_SERVER_START" ] && [ "$URL" != "ERROR_TUNNEL_START" ]; then
-                echo "✅ Found tunnel URL: $URL"
-                break
-              fi
-            fi
-
-            echo "⏳ Still waiting for tunnel... ($i/120)"
-            sleep 10
-          done
+          fi
 
           if [ -z "$URL" ]; then
-            echo "❌ Failed to get tunnel URL within timeout."
+            echo "❌ No tunnel URL found. Check logs above for details."
             exit 1
           fi
 
@@ -245,3 +240,10 @@ jobs:
           git add frontend/ollama_url.txt
           git commit -m "Update Ollama URL from Kaggle [skip ci]" || echo "No changes"
           git push
+
+      - name: Delete kernel (cleanup)
+        if: always()
+        env:
+          KERNEL_ID: ${{ steps.kernel.outputs.id }}
+        run: |
+          kaggle kernels delete "$KERNEL_ID" -y || true
