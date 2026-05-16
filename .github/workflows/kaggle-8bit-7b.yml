@@ -1,4 +1,4 @@
-name: Ollama on Kaggle GPU
+name: Ollama on Kaggle GPU (Direct Commit)
 
 on:
   workflow_dispatch:
@@ -13,47 +13,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Kaggle CLI and jq
-        run: |
-          python -m pip install --upgrade pip kaggle
-          sudo apt-get update
-          sudo apt-get install -y jq
+      - name: Install Kaggle CLI
+        run: pip install kaggle
 
       - name: Set up Kaggle API token
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
         run: |
-          if [ -z "$KAGGLE_API_TOKEN" ]; then
-            echo "❌ KAGGLE_API_TOKEN secret not set"
-            exit 1
-          fi
           mkdir -p ~/.kaggle
           echo "$KAGGLE_API_TOKEN" > ~/.kaggle/access_token
           chmod 600 ~/.kaggle/access_token
-          echo "KAGGLE_API_TOKEN=$KAGGLE_API_TOKEN" >> "$GITHUB_ENV"
+          echo "KAGGLE_API_TOKEN=$KAGGLE_API_TOKEN" >> $GITHUB_ENV
 
       - name: Set Kaggle username
         id: username
         run: |
-          USERNAME="${{ secrets.KAGGLE_USERNAME }}"
-          if [ -z "$USERNAME" ]; then
-            echo "❌ KAGGLE_USERNAME secret not set"
-            exit 1
-          fi
-          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
+          echo "username=${{ secrets.KAGGLE_USERNAME }}" >> $GITHUB_OUTPUT
 
-      - name: Generate unique kernel name, id, and title
+      - name: Generate unique kernel name
         id: kernel
         run: |
           UNIQUE_SUFFIX=$(date +%s)
-          KERNEL_SLUG="ollama-gpu-${UNIQUE_SUFFIX}"
-          KERNEL_ID="${{ steps.username.outputs.username }}/${KERNEL_SLUG}"
-          KERNEL_TITLE="Ollama GPU ${UNIQUE_SUFFIX}"
-          echo "slug=${KERNEL_SLUG}" >> "$GITHUB_OUTPUT"
-          echo "id=${KERNEL_ID}" >> "$GITHUB_OUTPUT"
-          echo "title=${KERNEL_TITLE}" >> "$GITHUB_OUTPUT"
+          echo "slug=ollama-gpu-${UNIQUE_SUFFIX}" >> $GITHUB_OUTPUT
+          echo "id=${{ secrets.KAGGLE_USERNAME }}/ollama-gpu-${UNIQUE_SUFFIX}" >> $GITHUB_OUTPUT
 
-      - name: Create kernel folder
+      - name: Create kernel folder with environment variables
         run: |
           mkdir -p kaggle-kernel
           cd kaggle-kernel
@@ -61,29 +45,28 @@ jobs:
           cat > kernel-metadata.json <<EOF
           {
             "id": "${{ steps.kernel.outputs.id }}",
-            "title": "${{ steps.kernel.outputs.title }}",
-            "code_file": "ollama_gpu.py",
+            "title": "Ollama GPU Direct",
+            "code_file": "script.py",
             "language": "python",
             "kernel_type": "script",
             "is_private": true,
             "enable_gpu": true,
-            "enable_internet": true
+            "enable_internet": true,
+            "env_vars": [
+              {"name": "GITHUB_REPO", "value": "${{ github.repository }}"},
+              {"name": "GITHUB_TOKEN", "value": "${{ secrets.GITHUB_TOKEN }}"}
+            ]
           }
           EOF
 
-          cat > ollama_gpu.py << 'EOF'
-          import subprocess, sys, os, time, requests, re
+          cat > script.py << 'EOF'
+          import subprocess, sys, os, time, requests, re, base64
           from pathlib import Path
 
-          OUTPUT_DIR = Path("/kaggle/working")
-          OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-          URL_FILE = OUTPUT_DIR / "tunnel_url.txt"
-
-          def log(msg):
-              print(msg, flush=True)
-
-          MODEL_NAME = "huihui_ai/qwen2.5-coder-abliterate"
-          TUNNEL_PORT = 11434
+          # ------------------------------------------------------------
+          # 1. Setup: install zstd, Ollama, cloudflared (same as before)
+          # ------------------------------------------------------------
+          def log(msg): print(msg, flush=True)
 
           log("Installing zstd...")
           subprocess.run("apt-get update -qq && apt-get install -y -qq zstd", shell=True, check=True)
@@ -92,25 +75,24 @@ jobs:
           subprocess.run("curl -fsSL https://ollama.com/install.sh | sh", shell=True, check=True)
 
           log("Starting Ollama server...")
-          os.environ["OLLAMA_HOST"] = f"0.0.0.0:{TUNNEL_PORT}"
+          os.environ["OLLAMA_HOST"] = "0.0.0.0:11434"
           os.environ["OLLAMA_ORIGINS"] = "*"
           server = subprocess.Popen(["ollama", "serve"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
           log("Waiting for Ollama server...")
           for _ in range(30):
               try:
-                  if requests.get(f"http://127.0.0.1:{TUNNEL_PORT}/", timeout=2).status_code == 200:
+                  if requests.get("http://127.0.0.1:11434/", timeout=2).status_code == 200:
                       log("Ollama server ready")
                       break
-              except:
-                  pass
+              except: pass
               time.sleep(2)
           else:
-              log("ERROR: Ollama server did not start")
-              sys.exit(1)
+              raise RuntimeError("Ollama server did not start")
 
-          log(f"Pulling model {MODEL_NAME}...")
-          subprocess.run(["ollama", "pull", MODEL_NAME], check=True)
+          MODEL = "huihui_ai/qwen2.5-coder-abliterate"
+          log(f"Pulling model {MODEL}...")
+          subprocess.run(["ollama", "pull", MODEL], check=True)
 
           log("Downloading cloudflared...")
           subprocess.run("wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared", shell=True)
@@ -119,7 +101,7 @@ jobs:
 
           log("Starting Cloudflare tunnel...")
           tunnel = subprocess.Popen(
-              ["cloudflared", "tunnel", "--url", f"http://127.0.0.1:{TUNNEL_PORT}", "--no-autoupdate"],
+              ["cloudflared", "tunnel", "--url", "http://127.0.0.1:11434", "--no-autoupdate"],
               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
           )
 
@@ -131,14 +113,53 @@ jobs:
               match = pattern.search(line)
               if match:
                   tunnel_url = match.group(0)
-                  URL_FILE.write_text(tunnel_url + "\n")
                   log(f"TUNNEL_URL={tunnel_url}")
                   break
-
           if not tunnel_url:
-              log("ERROR: No tunnel URL found")
+              raise RuntimeError("No tunnel URL found")
+
+          # ------------------------------------------------------------
+          # 2. Commit the URL directly to GitHub repository
+          # ------------------------------------------------------------
+          repo = os.environ.get("GITHUB_REPO")
+          token = os.environ.get("GITHUB_TOKEN")
+          if not repo or not token:
+              log("ERROR: Missing GITHUB_REPO or GITHUB_TOKEN environment variables")
               sys.exit(1)
 
+          # Path to the file in the repo
+          file_path = "frontend/ollama_url.txt"
+          api_url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+
+          # Get current file SHA (if exists)
+          headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+          resp = requests.get(api_url, headers=headers)
+          sha = resp.json().get("sha", "") if resp.status_code == 200 else None
+
+          # Prepare new content (base64 encoded)
+          content = tunnel_url + "\n"
+          encoded = base64.b64encode(content.encode()).decode()
+
+          # Build payload
+          payload = {
+              "message": "Update Ollama URL from Kaggle GPU",
+              "content": encoded,
+              "branch": "main"
+          }
+          if sha:
+              payload["sha"] = sha
+
+          # Commit
+          resp = requests.put(api_url, headers=headers, json=payload)
+          if resp.status_code in [200, 201]:
+              log("✅ Successfully committed tunnel URL to repository")
+          else:
+              log(f"❌ Failed to commit: {resp.status_code} - {resp.text}")
+              sys.exit(1)
+
+          # ------------------------------------------------------------
+          # 3. Keep kernel alive for 6 hours
+          # ------------------------------------------------------------
           log("Tunnel established. Keeping kernel alive for 6 hours.")
           time.sleep(21600)
           EOF
@@ -148,51 +169,5 @@ jobs:
           cd kaggle-kernel
           kaggle kernels push -p .
 
-      - name: Wait for kernel to start
-        env:
-          KERNEL_ID: ${{ steps.kernel.outputs.id }}
-        run: |
-          for i in $(seq 1 60); do
-            STATUS=$(kaggle kernels status "$KERNEL_ID" 2>/dev/null || true)
-            echo "$STATUS"
-            if echo "$STATUS" | grep -Eiq 'running|complete'; then
-              exit 0
-            fi
-            echo "Waiting for kernel start... ($i/60)"
-            sleep 10
-          done
-          echo "❌ Kernel did not start"
-          exit 1
-
-      - name: Wait for tunnel URL and capture (from logs)
-        id: get_url
-        env:
-          KERNEL_ID: ${{ steps.kernel.outputs.id }}
-        run: |
-          URL=""
-          for i in $(seq 1 120); do
-            # Fetch kernel logs
-            LOGS=$(kaggle kernels status "$KERNEL_ID" --log 2>/dev/null)
-            if echo "$LOGS" | grep -q "TUNNEL_URL="; then
-              URL=$(echo "$LOGS" | grep "TUNNEL_URL=" | head -1 | cut -d= -f2 | tr -d '[:space:]')
-              echo "Found tunnel URL: $URL"
-              break
-            fi
-            echo "Waiting for tunnel... ($i/120)"
-            sleep 10
-          done
-          if [ -z "$URL" ]; then
-            echo "❌ Failed to get tunnel URL from logs"
-            exit 1
-          fi
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
-
-      - name: Commit URL to repository
-        run: |
-          mkdir -p frontend
-          echo "${{ steps.get_url.outputs.url }}" > frontend/ollama_url.txt
-          git config user.name "github-actions[bot]"
-          git config.user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/ollama_url.txt
-          git commit -m "Update Ollama URL from Kaggle GPU [skip ci]" || echo "No changes"
-          git push
+      - name: Keep runner alive (optional, to monitor logs)
+        run: sleep 43200   # 12 hours, but kernel will commit URL within minutes
