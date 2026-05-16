@@ -1,4 +1,4 @@
-name: Run 8‑bit Qwen 7B on Kaggle GPU
+name: Kaggle 8‑bit Qwen 7B GPU Tunnel
 
 on:
   workflow_dispatch:
@@ -12,17 +12,33 @@ jobs:
   start-tunnel:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install Kaggle CLI
         run: pip install kaggle
 
+      # ------------------------------------------------------------
+      # Configure Kaggle API token (new format)
+      # ------------------------------------------------------------
+      - name: Set up Kaggle API token
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: |
+          mkdir -p ~/.kaggle
+          echo "$KAGGLE_API_TOKEN" > ~/.kaggle/access_token
+          chmod 600 ~/.kaggle/access_token
+          echo "KAGGLE_API_TOKEN=$KAGGLE_API_TOKEN" >> $GITHUB_ENV
+
+      # ------------------------------------------------------------
+      # Create dynamic Kaggle kernel (notebook)
+      # ------------------------------------------------------------
       - name: Create Kaggle kernel
         run: |
           mkdir -p kaggle-kernel
           cd kaggle-kernel
 
+          # The notebook content
           cat > kernel.ipynb << 'EOF'
           {
            "cells": [
@@ -30,19 +46,15 @@ jobs:
              "cell_type": "code",
              "source": [
               "import os, subprocess, time, requests\n",
-              "# Install vLLM with GPTQ support (for 8‑bit)\n",
-              "!pip install -q vllm auto-gptq optimum\n",
-              "!pip install -q cloudflared\n",
+              "!pip install -q vllm auto-gptq cloudflared\n",
               "\n",
-              "# ==================================================\n",
-              "# IMPORTANT: Replace with your actual 8‑bit model ID\n",
-              "# ==================================================\n",
-              "# Example: \"TheBloke/Qwen2.5-Coder-7B-Instruct-GPTQ-Int8\"\n",
-              "# If your model is already 8‑bit GPTQ, put its HF name here.\n",
+              "# =========================================================\n",
+              "# Use a pre‑quantized 8‑bit GPTQ model (change if you have your own 8‑bit version)\n",
+              "# For your exact model, you would need to quantize it first.\n",
               "MODEL_NAME = \"TheBloke/Qwen2.5-Coder-7B-Instruct-GPTQ-Int8\"\n",
-              "# ==================================================\n",
+              "# =========================================================\n",
               "\n",
-              "# Start vLLM server in 8‑bit mode (GPTQ)\n",
+              "# Start vLLM server in 8‑bit mode\n",
               "server = subprocess.Popen([\n",
               "    'python', '-m', 'vllm.entrypoints.openai.api_server',\n",
               "    '--model', MODEL_NAME,\n",
@@ -54,7 +66,7 @@ jobs:
               "    '--trust-remote-code'\n",
               "], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)\n",
               "\n",
-              "# Wait for server (up to 2 minutes)\n",
+              "# Wait for server (2 minutes)\n",
               "for i in range(120):\n",
               "    try:\n",
               "        r = requests.get('http://localhost:8000/health', timeout=2)\n",
@@ -101,7 +113,7 @@ jobs:
           }
           EOF
 
-          # Metadata for Kaggle
+          # Kernel metadata
           cat > kernel-metadata.json << 'EOF'
           {
            "id": "qwen-8bit-tunnel",
@@ -118,25 +130,24 @@ jobs:
           }
           EOF
 
-      - name: Authenticate Kaggle
-        env:
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-        run: |
-          mkdir -p ~/.kaggle
-          echo "{\"username\":\"$KAGGLE_USERNAME\",\"key\":\"$KAGGLE_KEY\"}" > ~/.kaggle/kaggle.json
-          chmod 600 ~/.kaggle/kaggle.json
-
+      # ------------------------------------------------------------
+      # Push kernel to Kaggle
+      # ------------------------------------------------------------
       - name: Push kernel to Kaggle
         run: |
           cd kaggle-kernel
           kaggle kernels push --force -p .
 
-      - name: Wait for tunnel URL and commit
+      # ------------------------------------------------------------
+      # Wait for tunnel URL and capture it
+      # ------------------------------------------------------------
+      - name: Wait for tunnel URL
+        id: get_url
         run: |
           cd kaggle-kernel
           URL=""
           for i in {1..120}; do
+            # Download logs
             kaggle kernels output qwen-8bit-tunnel -p . 2>/dev/null || true
             if [ -f kernel.log ] && grep -q "TUNNEL_URL=" kernel.log; then
               URL=$(grep "TUNNEL_URL=" kernel.log | head -1 | cut -d= -f2)
@@ -146,20 +157,27 @@ jobs:
             sleep 5
           done
           if [ -z "$URL" ]; then
-            echo "❌ Tunnel URL not captured"
+            echo "❌ Failed to get tunnel URL"
             exit 1
           fi
-          echo "URL=$URL" >> $GITHUB_ENV
+          echo "url=$URL" >> $GITHUB_OUTPUT
 
-      - name: Commit URL to repo
+      # ------------------------------------------------------------
+      # Commit URL to frontend/ollama_url.txt
+      # ------------------------------------------------------------
+      - name: Commit tunnel URL
         run: |
           mkdir -p frontend
-          echo "${{ env.URL }}" > frontend/ollama_url.txt
+          echo "${{ steps.get_url.outputs.url }}" > frontend/ollama_url.txt
           git config user.name "github-actions[bot]"
-          git config user.email "actions@github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add frontend/ollama_url.txt
-          git commit -m "Update Ollama URL (8‑bit) [skip ci]" || echo "No changes"
+          git commit -m "Update Ollama URL from Kaggle (8‑bit) [skip ci]" || echo "No changes"
           git push
 
+      # ------------------------------------------------------------
+      # Optional: Keep runner alive for 12 hours to monitor
+      # (Remove this line if you want the workflow to finish immediately)
+      # ------------------------------------------------------------
       - name: Keep runner alive (optional)
         run: sleep 7200
