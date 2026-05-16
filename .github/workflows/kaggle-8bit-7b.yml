@@ -86,6 +86,7 @@ jobs:
           OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
           URL_FILE = OUTPUT_DIR / "tunnel_url.txt"
           LOG_FILE = OUTPUT_DIR / "server_status.log"
+          CLOUDFLARED_LOG = OUTPUT_DIR / "cloudflared.log"
 
           def log(msg):
               print(msg, flush=True)
@@ -137,15 +138,18 @@ jobs:
           pattern = re.compile(r"https://[-a-zA-Z0-9]+\.trycloudflare\.com")
           tunnel_url = None
 
-          for line in tunnel.stdout:
-              line = line.rstrip()
-              log(line)
-              match = pattern.search(line)
-              if match:
-                  tunnel_url = match.group(0)
-                  URL_FILE.write_text(tunnel_url + "\n", encoding="utf-8")
-                  log(f"TUNNEL_URL={tunnel_url}")
-                  break
+          with open(CLOUDFLARED_LOG, "w", encoding="utf-8") as cf_log:
+              for line in tunnel.stdout:
+                  line = line.rstrip()
+                  log(line)
+                  cf_log.write(line + "\n")
+                  cf_log.flush()
+                  match = pattern.search(line)
+                  if match:
+                      tunnel_url = match.group(0)
+                      URL_FILE.write_text(tunnel_url + "\n", encoding="utf-8")
+                      log(f"TUNNEL_URL={tunnel_url}")
+                      break
 
           if not tunnel_url:
               URL_FILE.write_text("ERROR_TUNNEL_START\n", encoding="utf-8")
@@ -176,7 +180,7 @@ jobs:
           echo "❌ Kernel did not start in time"
           exit 1
 
-      - name: Wait for tunnel URL and capture it
+      - name: Wait for tunnel URL and capture it (plus fetch all logs)
         id: get_url
         env:
           KERNEL_ID: ${{ steps.kernel.outputs.id }}
@@ -208,6 +212,26 @@ jobs:
 
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
+          # ==================================================
+          # Fetch and display all logs from the kernel output
+          # ==================================================
+          echo "========================================="
+          echo "📄 server_status.log:"
+          if [ -f kaggle-output/server_status.log ]; then
+            cat kaggle-output/server_status.log
+          else
+            echo " (not found)"
+          fi
+
+          echo "========================================="
+          echo "📄 cloudflared.log:"
+          if [ -f kaggle-output/cloudflared.log ]; then
+            cat kaggle-output/cloudflared.log
+          else
+            echo " (not found)"
+          fi
+          echo "========================================="
+
       - name: Commit URL to repository
         run: |
           mkdir -p frontend
@@ -217,4 +241,3 @@ jobs:
           git add frontend/ollama_url.txt
           git commit -m "Update Ollama URL from Kaggle [skip ci]" || echo "No changes"
           git push
-          
