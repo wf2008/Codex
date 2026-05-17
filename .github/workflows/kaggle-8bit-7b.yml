@@ -65,15 +65,15 @@ jobs:
             "kernel_type": "script",
             "is_private": true,
             "enable_gpu": true,
-            "enable_internet": true,
-            "env_vars": [
-              {"name": "GITHUB_TOKEN", "value": "${{ secrets.MY_GITHUB_TOKEN }}"},
-              {"name": "GITHUB_REPO", "value": "${{ github.repository }}"}
-            ]
+            "enable_internet": true
           }
           EOF
 
-          cat > script.py << 'EOF'
+          # ==================================================
+          # The script is exactly your working manual version,
+          # but the token and repo are replaced by GitHub secrets.
+          # ==================================================
+          cat > script.py <<EOF
           import os
           import subprocess
           import sys
@@ -85,14 +85,11 @@ jobs:
           from pathlib import Path
 
           # ============================================================
-          # GitHub credentials from environment variables
+          # HARDCODED FINE-GRAINED TOKEN (injected from secret)
           # ============================================================
-          GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-          REPO = os.environ.get("GITHUB_REPO")
+          GITHUB_TOKEN = "${{ secrets.MY_GITHUB_TOKEN }}"
+          REPO = "${{ github.repository }}"
           FILE_PATH = "frontend/ollama_url.txt"
-
-          if not GITHUB_TOKEN or not REPO:
-              raise RuntimeError("GITHUB_TOKEN or GITHUB_REPO not set")
 
           def commit_to_github(content):
               url = f"https://api.github.com/repos/{REPO}/contents/{FILE_PATH}"
@@ -115,7 +112,7 @@ jobs:
                   print(f"❌ Failed to commit: {put.status_code} - {put.text}")
 
           # ============================================================
-          # Setup and model loading
+          # Setup and model loading (same as manual version)
           # ============================================================
           OUTPUT_DIR = Path("/kaggle/working")
           OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
