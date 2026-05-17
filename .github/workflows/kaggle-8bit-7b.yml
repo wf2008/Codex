@@ -69,10 +69,6 @@ jobs:
           }
           EOF
 
-          # ==================================================
-          # The script is exactly your working manual version,
-          # but the token and repo are replaced by GitHub secrets.
-          # ==================================================
           cat > script.py <<EOF
           import os
           import subprocess
@@ -84,9 +80,6 @@ jobs:
           import platform
           from pathlib import Path
 
-          # ============================================================
-          # HARDCODED FINE-GRAINED TOKEN (injected from secret)
-          # ============================================================
           GITHUB_TOKEN = "${{ secrets.MY_GITHUB_TOKEN }}"
           REPO = "${{ github.repository }}"
           FILE_PATH = "frontend/ollama_url.txt"
@@ -111,9 +104,6 @@ jobs:
               else:
                   print(f"❌ Failed to commit: {put.status_code} - {put.text}")
 
-          # ============================================================
-          # Setup and model loading (same as manual version)
-          # ============================================================
           OUTPUT_DIR = Path("/kaggle/working")
           OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
           LOG_FILE = OUTPUT_DIR / "setup.log"
@@ -146,13 +136,24 @@ jobs:
           else:
               raise RuntimeError("Ollama not ready")
 
-          MODEL = "huihui_ai/qwen2.5-coder-abliterate"
-          log(f"Pulling {MODEL}...")
-          subprocess.run(["ollama", "pull", MODEL], check=True)
+          # Pull base model
+          BASE_MODEL = "huihui_ai/qwen2.5-coder-abliterate"
+          log(f"Pulling base model {BASE_MODEL}...")
+          subprocess.run(["ollama", "pull", BASE_MODEL], check=True)
 
-          # ============================================================
-          # Download the correct cloudflared binary for the environment
-          # ============================================================
+          # Create Modelfile to increase context window (32k tokens)
+          modelfile_content = f"FROM {BASE_MODEL}\nPARAMETER num_ctx 32768\n"
+          with open("/kaggle/working/Modelfile", "w") as f:
+              f.write(modelfile_content)
+          log("Created Modelfile with num_ctx=32768")
+
+          # Build custom model
+          CUSTOM_MODEL = "wf-agent-model"
+          log(f"Building custom model {CUSTOM_MODEL}...")
+          subprocess.run(["ollama", "create", CUSTOM_MODEL, "-f", "/kaggle/working/Modelfile"], check=True)
+          log(f"Custom model {CUSTOM_MODEL} built successfully")
+
+          # Download cloudflared
           arch = platform.machine().lower()
           if arch in ("aarch64", "arm64"):
               binary = "cloudflared-linux-arm64"
@@ -168,9 +169,7 @@ jobs:
           subprocess.run(["mv", "cloudflared", "/usr/local/bin/"], check=True)
           log("cloudflared installed successfully")
 
-          # ============================================================
-          # Start Cloudflare tunnel
-          # ============================================================
+          # Start tunnel
           log("Starting Cloudflare tunnel...")
           tunnel = subprocess.Popen(
               ["cloudflared", "tunnel", "--url", "http://127.0.0.1:11434", "--no-autoupdate"],
@@ -191,9 +190,6 @@ jobs:
           if not tunnel_url:
               raise RuntimeError("No tunnel URL found")
 
-          # ============================================================
-          # Commit the URL to GitHub
-          # ============================================================
           commit_to_github(tunnel_url)
 
           log("Tunnel established. Keeping kernel alive for 2 hours...")
