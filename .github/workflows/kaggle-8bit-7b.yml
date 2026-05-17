@@ -1,1 +1,155 @@
-bmFtZTogS2FnZ2xlIE9sbGFtYSBHUFUgKERpcmVjdCBDb21taXQpCgpvbjoKICB3b3JrZmxvd19kaXNwYXRjaDoKCnBlcm1pc3Npb25zOgogIGNvbnRlbnRzOiB3cml0ZQoKam9iczoKICBzdGFydC1vbGxhbWE6CiAgICBydW5zLW9uOiB1YnVudHUtbGF0ZXN0CiAgICB0aW1lb3V0LW1pbnV0ZXM6IDYwCiAgICBzdGVwczoKICAgICAgLSBuYW1lOiBDaGVja291dCByZXBvc2l0b3J5CiAgICAgICAgdXNlczogYWN0aW9ucy9jaGVja291dEB2NAoKICAgICAgLSBuYW1lOiBJbnN0YWxsIEthZ2dsZSBDTEkKICAgICAgICBydW46IHBpcCBpbnN0YWxsIC0tcXVpZXQga2FnZ2xlCgogICAgICAtIG5hbWU6IFNldCB1cCBLYWdnbGUgQVBJIHRva2VuCiAgICAgICAgZW52OgogICAgICAgICAgS0FHR0xFX0FQSV9UT0tFTjogJHt7IHNlY3JldHMuS0FHR0xFX0FQSV9UT0tFTiB9fQogICAgICAgIHJ1bjogfAogICAgICAgICAgaWYgWyAteiAiJEtBR0dMRV9BUElfVE9LRU4iIF07IHRoZW4KICAgICAgICAgICAgZWNobyAi4p2MIEtBR0dMRV9BUElfVE9LRU4gc2VjcmV0IG5vdCBzZXQiCiAgICAgICAgICAgIGV4aXQgMQogICAgICAgICAgZmkKICAgICAgICAgIG1rZGlyIC1wIH4vLmthZ2dsZQogICAgICAgICAgZWNobyAiJEtBR0dMRV9BUElfVE9LRU4iID4gfi8ua2FnZ2xlL2FjY2Vzc190b2tlbgogICAgICAgICAgY2htb2QgNjAwIH4vLmthZ2dsZS9hY2Nlc3NfdG9rZW4KCiAgICAgIC0gbmFtZTogU2V0IEthZ2dsZSB1c2VybmFtZQogICAgICAgIGlkOiB1c2VybmFtZQogICAgICAgIHJ1bjogfAogICAgICAgICAgVVNFUk5BTUU9IiR7eyBzZWNyZXRzLktBR0dMRV9VU0VSTkFNRSB9fSIKICAgICAgICAgIGlmIFsgLXogIiRVU0VSTkFNRSIgXTsgdGhlbgogICAgICAgICAgICBlY2hvICLinYwgS0FHR0xFX1VTRVJOQU1FIHNlY3JldCBub3Qgc2V0IgogICAgICAgICAgICBleGl0IDEKICAgICAgICAgIGZpCiAgICAgICAgICBlY2hvICJ1c2VybmFtZT0kVVNFUk5BTUUiID4+ICRHSVRIVUJfT1VUUFVUCgogICAgICAtIG5hbWU6IEdlbmVyYXRlIHVuaXF1ZSBrZXJuZWwgbmFtZQogICAgICAgIGlkOiBrZXJuZWwKICAgICAgICBydW46IHwKICAgICAgICAgIFVOSVFVRV9TVUZGSVg9JChkYXRlICslcykKICAgICAgICAgIEtFUk5FTF9TTFVHPSJvbGxhbWEtZ3B1LSR7VU5JUVVFX1NVRkZJWH0iCiAgICAgICAgICBLRVJORUxfSUQ9IiR7eyBzdGVwcy51c2VybmFtZS5vdXRwdXRzLnVzZXJuYW1lIH19LyR7S0VSTkVMX1NMVUd9IgogICAgICAgICAgS0VSTkVMX1RJVExFPSIke0tFUk5FTF9TTFVHfSIKICAgICAgICAgIGVjaG8gInNsdWc9JHtLRVJORUxfU0xVR30iID4+ICRHSVRIVUJfT1VUUFVUCiAgICAgICAgICBlY2hvICJpZD0ke0tFUk5FTF9JRH0iID4+ICRHSVRIVUJfT1VUUFVUCiAgICAgICAgICBlY2hvICJ0aXRsZT0ke0tFUk5FTF9USVRMRX0iID4+ICRHSVRIVUJfT1VUUFVUCgogICAgICAtIG5hbWU6IENyZWF0ZSBrZXJuZWwgZm9sZGVyCiAgICAgICAgZW52OgogICAgICAgICAgU0NSSVBUX0I2NDogImFXMXdiM0owSUc5ekNtbHRjRzl5ZENCemRXSndjbTlqWlhOekNtbHRjRzl5ZENCemVYTUthVzF3YjNKMElIUnBiV1VLYVcxd2IzSjBJSEpsY1hWbGMzUnpDbWx0Y0c5eWRDQnlaUXBtY205dElIQmhkR2hzYVdJZ2FXMXdiM0owSUZCaGRHZ0tDazlWVkZCVlZGOUVTVklnUFNCUVlYUm9LQ0l2YTJGbloyeGxMM2R2Y210cGJtY2lLUXBQVlZSUVZWUmZSRWxTTG0xclpHbHlLSEJoY21WdWRITTlWSEoxWlN3Z1pYaHBjM1JmYjJzOVZISjFaU2tLVEU5SFgwWkpURVVnUFNCUFZWUlFWVlJmUkVsU0lDOGdJbk5sZEhWd0xteHZaeUlLVlZKTVgwWkpURVVnUFNCUFZWUlFWVlJmUkVsU0lDOGdJbTlzYkdGdFlWOTFjbXd1ZEhoMElnb0taR1ZtSUd4dlp5aHRjMmNwT2dvZ0lDQWdjSEpwYm5Rb2JYTm5MQ0JtYkhWemFEMVVjblZsS1FvZ0lDQWdkMmwwYUNCTVQwZGZSa2xNUlM1dmNHVnVLQ0poSWlrZ1lYTWdaam9LSUNBZ0lDQWdJQ0JtTG5keWFYUmxLSE4wY2lodGMyY3BJQ3NnSWx4dUlpa0tDbXh2WnlnaVNXNXpkR0ZzYkdsdVp5QjZjM1JrTGk0dUlpa0tjM1ZpY0hKdlkyVnpjeTV5ZFc0b0ltRndkQzFuWlhRZ2RYQmtZWFJsSUMxeGNTQW1KaUJoY0hRdFoyVjBJR2x1YzNSaGJHd2dMWGtnTFhGeElIcHpkR1FpTENCemFHVnNiRDFVY25WbExDQmphR1ZqYXoxVWNuVmxLUW9LYkc5bktDSkpibk4wWVd4c2FXNW5JRTlzYkdGdFlTNHVMaUlwQ25OMVluQnliMk5sYzNNdWNuVnVLQ0pqZFhKc0lDMW1jMU5NSUdoMGRIQnpPaTh2YjJ4c1lXMWhMbU52YlM5cGJuTjBZV3hzTG5Ob0lId2djMmdpTENCemFHVnNiRDFVY25WbExDQmphR1ZqYXoxVWNuVmxLUW9LYkc5bktDSlRkR0Z5ZEdsdVp5QlBiR3hoYldFZ2MyVnlkbVZ5TGk0dUlpa0tiM011Wlc1MmFYSnZibHNpVDB4TVFVMUJYMGhQVTFRaVhTQTlJQ0l3TGpBdU1DNHdPakV4TkRNMElncHZjeTVsYm5acGNtOXVXeUpQVEV4QlRVRmZUMUpKUjBsT1V5SmRJRDBnSWlvaUNtOXNiR0Z0WVY5d2NtOWpJRDBnYzNWaWNISnZZMlZ6Y3k1UWIzQmxiaWdLSUNBZ0lGc2liMnhzWVcxaElpd2dJbk5sY25abElsMHNDaUFnSUNCemRHUnZkWFE5YzNWaWNISnZZMlZ6Y3k1UVNWQkZMQW9nSUNBZ2MzUmtaWEp5UFhOMVluQnliMk5sYzNNdVVFbFFSU3dLS1FvS2JHOW5LQ0pYWVdsMGFXNW5JR1p2Y2lCUGJHeGhiV0VnYzJWeWRtVnlMaTR1SWlrS2NtVmhaSGtnUFNCR1lXeHpaUXBtYjNJZ1h5QnBiaUJ5WVc1blpTZ3pNQ2s2Q2lBZ0lDQjBjbms2Q2lBZ0lDQWdJQ0FnYVdZZ2NtVnhkV1Z6ZEhNdVoyVjBLQ0pvZEhSd09pOHZNVEkzTGpBdU1DNHhPakV4TkRNMEx5SXNJSFJwYldWdmRYUTlNaWt1YzNSaGRIVnpYMk52WkdVZ1BUMGdNakF3T2dvZ0lDQWdJQ0FnSUNBZ0lDQnNiMmNvSWs5c2JHRnRZU0J6WlhKMlpYSWdjbVZoWkhraUtRb2dJQ0FnSUNBZ0lDQWdJQ0J5WldGa2VTQTlJRlJ5ZFdVS0lDQWdJQ0FnSUNBZ0lDQWdZbkpsWVdzS0lDQWdJR1Y0WTJWd2RDQkZlR05sY0hScGIyNDZDaUFnSUNBZ0lDQWdjR0Z6Y3dvZ0lDQWdkR2x0WlM1emJHVmxjQ2d5S1FwcFppQnViM1FnY21WaFpIazZDaUFnSUNCeVlXbHpaU0JTZFc1MGFXMWxSWEp5YjNJb0lrOXNiR0Z0WVNCelpYSjJaWElnWkdsa0lHNXZkQ0J6ZEdGeWRDSXBDZ3BOVDBSRlRDQTlJQ0pvZFdsb2RXbGZZV2t2Y1hkbGJqSXVOUzFqYjJSbGNpMWhZbXhwZEdWeVlYUmxJZ3BzYjJjb1ppSlFkV3hzYVc1bklHMXZaR1ZzSUh0TlQwUkZUSDB1TGk0aUtRcHpkV0p3Y205alpYTnpMbkoxYmloYkltOXNiR0Z0WVNJc0lDSndkV3hzSWl3Z1RVOUVSVXhkTENCamFHVmphejFVY25WbEtRb0tiRzluS0NKRWIzZHViRzloWkdsdVp5QmpiRzkxWkdac1lYSmxaQzR1TGlJcENuTjFZbkJ5YjJObGMzTXVjblZ1S0FvZ0lDQWdJbmRuWlhRZ0xYRWdhSFIwY0hNNkx5OW5hWFJvZFdJdVkyOXRMMk5zYjNWa1pteGhjbVV2WTJ4dmRXUm1iR0Z5WldRdmNtVnNaV0Z6WlhNdmJHRjBaWE4wTDJSdmQyNXNiMkZrTDJOc2IzVmtabXhoY21Wa0xXeHBiblY0TFdGdFpEWTBJQzFQSUdOc2IzVmtabXhoY21Wa0lpd0tJQ0FnSUhOb1pXeHNQVlJ5ZFdVc0lHTm9aV05yUFZSeWRXVXNDaWtLYzNWaWNISnZZMlZ6Y3k1eWRXNG9JbU5vYlc5a0lDdDRJR05zYjNWa1pteGhjbVZrSWl3Z2MyaGxiR3c5VkhKMVpTd2dZMmhsWTJzOVZISjFaU2tLYzNWaWNISnZZMlZ6Y3k1eWRXNG9JbTEySUdOc2IzVmtabXhoY21Wa0lDOTFjM0l2Ykc5allXd3ZZbWx1THlJc0lITm9aV3hzUFZSeWRXVXNJR05vWldOclBWUnlkV1VwQ2dwc2IyY29JbE4wWVhKMGFXNW5JRU5zYjNWa1pteGhjbVVnZEhWdWJtVnNMaTR1SWlrS2RIVnVibVZzSUQwZ2MzVmljSEp2WTJWemN5NVFiM0JsYmlnS0lDQWdJRnNpWTJ4dmRXUm1iR0Z5WldRaUxDQWlkSFZ1Ym1Wc0lpd2dJaTB0ZFhKc0lpd2dJbWgwZEhBNkx5OHhNamN1TUM0d0xqRTZNVEUwTXpRaUxDQWlMUzF1YnkxaGRYUnZkWEJrWVhSbElsMHNDaUFnSUNCemRHUnZkWFE5YzNWaWNISnZZMlZ6Y3k1UVNWQkZMQ0J6ZEdSbGNuSTljM1ZpY0hKdlkyVnpjeTVUVkVSUFZWUXNJSFJsZUhROVZISjFaU3dnWW5WbWMybDZaVDB4TEFvcENncHdZWFIwWlhKdUlEMGdjbVV1WTI5dGNHbHNaU2h5SW1oMGRIQnpPaTh2V3kxaExYcEJMVm93TFRsZEsxd3VkSEo1WTJ4dmRXUm1iR0Z5WlZ3dVkyOXRJaWtLZEhWdWJtVnNYM1Z5YkNBOUlFNXZibVVLWm05eUlHeHBibVVnYVc0Z2RIVnVibVZzTG5OMFpHOTFkRG9LSUNBZ0lHeHBibVVnUFNCc2FXNWxMbkp6ZEhKcGNDZ3BDaUFnSUNCc2IyY29iR2x1WlNrS0lDQWdJRzFoZEdOb0lEMGdjR0YwZEdWeWJpNXpaV0Z5WTJnb2JHbHVaU2tLSUNBZ0lHbG1JRzFoZEdOb09nb2dJQ0FnSUNBZ0lIUjFibTVsYkY5MWNtd2dQU0J0WVhSamFDNW5jbTkxY0Nnd0tRb2dJQ0FnSUNBZ0lHeHZaeWhtSWxSVlRrNUZURjlWVWt3OWUzUjFibTVsYkY5MWNteDlJaWtLSUNBZ0lDQWdJQ0JpY21WaGF3b0thV1lnYm05MElIUjFibTVsYkY5MWNtdzZDaUFnSUNCeVlXbHpaU0JTZFc1MGFXMWxSWEp5YjNJb0lrNXZJSFIxYm01bGJDQlZVa3dnWm05MWJtUWlLUW9LSXlCWGNtbDBaU0JWVWt3Z2RHOGdMMnRoWjJkc1pTOTNiM0pyYVc1bkx5QnpieUJwZENCaVpXTnZiV1Z6SUdFZ1pHOTNibXh2WVdSaFlteGxJR3RsY201bGJDQnZkWFJ3ZFhRdUNpTWdSMmwwU0hWaUlFRmpkR2x2Ym5NZ2QybHNiQ0JtWlhSamFDQjBhR2x6SUdacGJHVWdkbWxoSUhSb1pTQkxZV2RuYkdVZ1FWQkpJR0Z1WkNCamIyMXRhWFFnYVhRdUNsVlNURjlHU1V4RkxuZHlhWFJsWDNSbGVIUW9kSFZ1Ym1Wc1gzVnliQ0FySUNKY2JpSXBDbXh2WnlobUlsZHliM1JsSUhSMWJtNWxiQ0JWVWt3Z2RHOGdlMVZTVEY5R1NVeEZmU0lwQ2dwc2IyY29JbFIxYm01bGJDQmxjM1JoWW14cGMyaGxaQzRnUzJWbGNHbHVaeUJyWlhKdVpXd2dZV3hwZG1VZ1ptOXlJRElnYUc5MWNuTXVMaTRpS1FwMGFXMWxMbk5zWldWd0tEY3lNREFwQ2c9PSIKICAgICAgICBydW46IHwKICAgICAgICAgIG1rZGlyIC1wIGthZ2dsZS1rZXJuZWwKICAgICAgICAgIGNkIGthZ2dsZS1rZXJuZWwKCiAgICAgICAgICBjYXQgPiBrZXJuZWwtbWV0YWRhdGEuanNvbiA8PEVPRgogICAgICAgICAgewogICAgICAgICAgICAiaWQiOiAiJHt7IHN0ZXBzLmtlcm5lbC5vdXRwdXRzLmlkIH19IiwKICAgICAgICAgICAgInRpdGxlIjogIiR7eyBzdGVwcy5rZXJuZWwub3V0cHV0cy50aXRsZSB9fSIsCiAgICAgICAgICAgICJjb2RlX2ZpbGUiOiAic2NyaXB0LnB5IiwKICAgICAgICAgICAgImxhbmd1YWdlIjogInB5dGhvbiIsCiAgICAgICAgICAgICJrZXJuZWxfdHlwZSI6ICJzY3JpcHQiLAogICAgICAgICAgICAiaXNfcHJpdmF0ZSI6IHRydWUsCiAgICAgICAgICAgICJlbmFibGVfZ3B1IjogdHJ1ZSwKICAgICAgICAgICAgImVuYWJsZV9pbnRlcm5ldCI6IHRydWUKICAgICAgICAgIH0KICAgICAgICAgIEVPRgoKICAgICAgICAgIHByaW50ZiAnJXMnICIkU0NSSVBUX0I2NCIgfCBiYXNlNjQgLWQgPiBzY3JpcHQucHkKCiAgICAgICAgICBlY2hvICItLS0gR2VuZXJhdGVkIHNjcmlwdC5weSAoZmlyc3QgMjUgbGluZXMpIC0tLSIKICAgICAgICAgIGhlYWQgLW4gMjUgc2NyaXB0LnB5CiAgICAgICAgICBlY2hvICItLS0gU3ludGF4IGNoZWNrIC0tLSIKICAgICAgICAgIHB5dGhvbjMgLW0gcHlfY29tcGlsZSBzY3JpcHQucHkgJiYgZWNobyAi4pyFIHNjcmlwdC5weSBjb21waWxlcyIKCiAgICAgIC0gbmFtZTogUHVzaCBrZXJuZWwgdG8gS2FnZ2xlCiAgICAgICAgcnVuOiB8CiAgICAgICAgICBjZCBrYWdnbGUta2VybmVsCiAgICAgICAgICBrYWdnbGUga2VybmVscyBwdXNoIC1wIC4KCiAgICAgIC0gbmFtZTogV2FpdCBmb3Iga2VybmVsIHRvIHB1Ymxpc2ggdHVubmVsIFVSTAogICAgICAgIGlkOiB3YWl0X3VybAogICAgICAgIGVudjoKICAgICAgICAgIEtFUk5FTF9JRDogJHt7IHN0ZXBzLmtlcm5lbC5vdXRwdXRzLmlkIH19CiAgICAgICAgcnVuOiB8CiAgICAgICAgICBta2RpciAtcCBrZXJuZWwtb3V0cHV0CiAgICAgICAgICBlY2hvICJQb2xsaW5nIGtlcm5lbCAkS0VSTkVMX0lEIGZvciBvbGxhbWFfdXJsLnR4dCAodXAgdG8gMjUgbWludXRlcykuLi4iCgogICAgICAgICAgVFVOTkVMX1VSTD0iIgogICAgICAgICAgZm9yIGkgaW4gJChzZXEgMSA1MCk7IGRvCiAgICAgICAgICAgIGVjaG8gIlskaS81MF0gQ2hlY2tpbmcga2VybmVsIHN0YXR1cyAvIG91dHB1dC4uLiIKICAgICAgICAgICAgU1RBVFVTPSQoa2FnZ2xlIGtlcm5lbHMgc3RhdHVzICIkS0VSTkVMX0lEIiAyPiYxIHx8IHRydWUpCiAgICAgICAgICAgIGVjaG8gIiRTVEFUVVMiCgogICAgICAgICAgICAjIFRyeSB0byBwdWxsIG91dHB1dHMgKG9ubHkgcHJlc2VudCBvbmNlIHRoZSBrZXJuZWwgaGFzIGVtaXR0ZWQgdGhlbSkKICAgICAgICAgICAga2FnZ2xlIGtlcm5lbHMgb3V0cHV0ICIkS0VSTkVMX0lEIiAtcCBrZXJuZWwtb3V0cHV0IC0tZm9yY2UgPi9kZXYvbnVsbCAyPiYxIHx8IHRydWUKCiAgICAgICAgICAgIGlmIFsgLWYga2VybmVsLW91dHB1dC9vbGxhbWFfdXJsLnR4dCBdOyB0aGVuCiAgICAgICAgICAgICAgVFVOTkVMX1VSTD0kKHRyIC1kICdcclxuJyA8IGtlcm5lbC1vdXRwdXQvb2xsYW1hX3VybC50eHQgfCB4YXJncykKICAgICAgICAgICAgICBpZiBbIC1uICIkVFVOTkVMX1VSTCIgXTsgdGhlbgogICAgICAgICAgICAgICAgZWNobyAi4pyFIEdvdCB0dW5uZWwgVVJMOiAkVFVOTkVMX1VSTCIKICAgICAgICAgICAgICAgIGJyZWFrCiAgICAgICAgICAgICAgZmkKICAgICAgICAgICAgZmkKCiAgICAgICAgICAgICMgQmFpbCBlYXJseSBpZiB0aGUga2VybmVsIGhhcmQtZmFpbGVkCiAgICAgICAgICAgIGlmIGVjaG8gIiRTVEFUVVMiIHwgZ3JlcCAtcWlFICJlcnJvcnxmYWlsZWQiOyB0aGVuCiAgICAgICAgICAgICAgZWNobyAi4p2MIEtlcm5lbCByZXBvcnRlZCBlcnJvciBzdGF0ZS4iCiAgICAgICAgICAgICAgZXhpdCAxCiAgICAgICAgICAgIGZpCgogICAgICAgICAgICBzbGVlcCAzMAogICAgICAgICAgZG9uZQoKICAgICAgICAgIGlmIFsgLXogIiRUVU5ORUxfVVJMIiBdOyB0aGVuCiAgICAgICAgICAgIGVjaG8gIuKdjCBUaW1lZCBvdXQgd2FpdGluZyBmb3IgdHVubmVsIFVSTCIKICAgICAgICAgICAgZXhpdCAxCiAgICAgICAgICBmaQoKICAgICAgICAgICMgQmFzaWMgc2FuaXR5IGNoZWNrIG9uIFVSTCBmb3JtYXQKICAgICAgICAgIGlmICEgZWNobyAiJFRVTk5FTF9VUkwiIHwgZ3JlcCAtcUUgJ15odHRwczovL1stYS16QS1aMC05XStcLnRyeWNsb3VkZmxhcmVcLmNvbSQnOyB0aGVuCiAgICAgICAgICAgIGVjaG8gIuKdjCBVbmV4cGVjdGVkIFVSTCBmb3JtYXQ6ICRUVU5ORUxfVVJMIgogICAgICAgICAgICBleGl0IDEKICAgICAgICAgIGZpCgogICAgICAgICAgZWNobyAidHVubmVsX3VybD0kVFVOTkVMX1VSTCIgPj4gJEdJVEhVQl9PVVRQVVQKCiAgICAgIC0gbmFtZTogQ29tbWl0IE9sbGFtYSBVUkwgYmFjayB0byByZXBvCiAgICAgICAgZW52OgogICAgICAgICAgR0hfVE9LRU46ICR7eyBzZWNyZXRzLkdJVEhVQl9UT0tFTiB9fQogICAgICAgICAgVFVOTkVMX1VSTDogJHt7IHN0ZXBzLndhaXRfdXJsLm91dHB1dHMudHVubmVsX3VybCB9fQogICAgICAgICAgUkVQTzogJHt7IGdpdGh1Yi5yZXBvc2l0b3J5IH19CiAgICAgICAgcnVuOiB8CiAgICAgICAgICBta2RpciAtcCBmcm9udGVuZAogICAgICAgICAgcHJpbnRmICclc1xuJyAiJFRVTk5FTF9VUkwiID4gZnJvbnRlbmQvb2xsYW1hX3VybC50eHQKICAgICAgICAgIGVjaG8gIldyb3RlIGZyb250ZW5kL29sbGFtYV91cmwudHh0ID0gJFRVTk5FTF9VUkwiCgogICAgICAgICAgZ2l0IGNvbmZpZyB1c2VyLm5hbWUgICJnaXRodWItYWN0aW9uc1tib3RdIgogICAgICAgICAgZ2l0IGNvbmZpZyB1c2VyLmVtYWlsICI0MTg5ODI4MitnaXRodWItYWN0aW9uc1tib3RdQHVzZXJzLm5vcmVwbHkuZ2l0aHViLmNvbSIKCiAgICAgICAgICBnaXQgYWRkIGZyb250ZW5kL29sbGFtYV91cmwudHh0CiAgICAgICAgICBpZiBnaXQgZGlmZiAtLWNhY2hlZCAtLXF1aWV0OyB0aGVuCiAgICAgICAgICAgIGVjaG8gIk5vIGNoYW5nZSBpbiBvbGxhbWFfdXJsLnR4dCDigJQgbm90aGluZyB0byBjb21taXQuIgogICAgICAgICAgICBleGl0IDAKICAgICAgICAgIGZpCgogICAgICAgICAgZ2l0IGNvbW1pdCAtbSAiVXBkYXRlIE9sbGFtYSB0dW5uZWwgVVJMIGZyb20gS2FnZ2xlIEdQVSBydW4iCiAgICAgICAgICAjIFB1c2ggdXNpbmcgdGhlIGJ1aWx0LWluIEdJVEhVQl9UT0tFTiAobm8gUEFUIG5lZWRlZCB0aGFua3MgdG8gcGVybWlzc2lvbnM6IGNvbnRlbnRzOiB3cml0ZSkKICAgICAgICAgIGdpdCBwdXNoICJodHRwczovL3gtYWNjZXNzLXRva2VuOiR7R0hfVE9LRU59QGdpdGh1Yi5jb20vJHtSRVBPfS5naXQiIEhFQUQ6JHtHSVRIVUJfUkVGI3JlZnMvaGVhZHMvfQoKICAgICAgICAgIGVjaG8gIuKchSBDb21taXR0ZWQgYW5kIHB1c2hlZCB0dW5uZWwgVVJMIHRvICRSRVBPIgo=
+name: Kaggle Ollama GPU (Direct Commit)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  start-ollama:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Kaggle CLI
+        run: pip install --quiet kaggle
+
+      - name: Set up Kaggle API token
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: |
+          if [ -z "$KAGGLE_API_TOKEN" ]; then
+            echo "❌ KAGGLE_API_TOKEN secret not set"
+            exit 1
+          fi
+          mkdir -p ~/.kaggle
+          echo "$KAGGLE_API_TOKEN" > ~/.kaggle/access_token
+          chmod 600 ~/.kaggle/access_token
+
+      - name: Set Kaggle username
+        id: username
+        run: |
+          USERNAME="${{ secrets.KAGGLE_USERNAME }}"
+          if [ -z "$USERNAME" ]; then
+            echo "❌ KAGGLE_USERNAME secret not set"
+            exit 1
+          fi
+          echo "username=$USERNAME" >> $GITHUB_OUTPUT
+
+      - name: Generate unique kernel name
+        id: kernel
+        run: |
+          UNIQUE_SUFFIX=$(date +%s)
+          KERNEL_SLUG="ollama-gpu-${UNIQUE_SUFFIX}"
+          KERNEL_ID="${{ steps.username.outputs.username }}/${KERNEL_SLUG}"
+          KERNEL_TITLE="${KERNEL_SLUG}"
+          echo "slug=${KERNEL_SLUG}" >> $GITHUB_OUTPUT
+          echo "id=${KERNEL_ID}" >> $GITHUB_OUTPUT
+          echo "title=${KERNEL_TITLE}" >> $GITHUB_OUTPUT
+
+      - name: Create kernel folder
+        env:
+          SCRIPT_B64: "aW1wb3J0IG9zCmltcG9ydCBzdWJwcm9jZXNzCmltcG9ydCBzeXMKaW1wb3J0IHRpbWUKaW1wb3J0IHJlcXVlc3RzCmltcG9ydCByZQpmcm9tIHBhdGhsaWIgaW1wb3J0IFBhdGgKCk9VVFBVVF9ESVIgPSBQYXRoKCIva2FnZ2xlL3dvcmtpbmciKQpPVVRQVVRfRElSLm1rZGlyKHBhcmVudHM9VHJ1ZSwgZXhpc3Rfb2s9VHJ1ZSkKTE9HX0ZJTEUgPSBPVVRQVVRfRElSIC8gInNldHVwLmxvZyIKVVJMX0ZJTEUgPSBPVVRQVVRfRElSIC8gIm9sbGFtYV91cmwudHh0IgoKZGVmIGxvZyhtc2cpOgogICAgcHJpbnQobXNnLCBmbHVzaD1UcnVlKQogICAgd2l0aCBMT0dfRklMRS5vcGVuKCJhIikgYXMgZjoKICAgICAgICBmLndyaXRlKHN0cihtc2cpICsgIlxuIikKCmxvZygiSW5zdGFsbGluZyB6c3RkLi4uIikKc3VicHJvY2Vzcy5ydW4oImFwdC1nZXQgdXBkYXRlIC1xcSAmJiBhcHQtZ2V0IGluc3RhbGwgLXkgLXFxIHpzdGQiLCBzaGVsbD1UcnVlLCBjaGVjaz1UcnVlKQoKbG9nKCJJbnN0YWxsaW5nIE9sbGFtYS4uLiIpCnN1YnByb2Nlc3MucnVuKCJjdXJsIC1mc1NMIGh0dHBzOi8vb2xsYW1hLmNvbS9pbnN0YWxsLnNoIHwgc2giLCBzaGVsbD1UcnVlLCBjaGVjaz1UcnVlKQoKbG9nKCJTdGFydGluZyBPbGxhbWEgc2VydmVyLi4uIikKb3MuZW52aXJvblsiT0xMQU1BX0hPU1QiXSA9ICIwLjAuMC4wOjExNDM0Igpvcy5lbnZpcm9uWyJPTExBTUFfT1JJR0lOUyJdID0gIioiCm9sbGFtYV9wcm9jID0gc3VicHJvY2Vzcy5Qb3BlbigKICAgIFsib2xsYW1hIiwgInNlcnZlIl0sCiAgICBzdGRvdXQ9c3VicHJvY2Vzcy5QSVBFLAogICAgc3RkZXJyPXN1YnByb2Nlc3MuUElQRSwKKQoKbG9nKCJXYWl0aW5nIGZvciBPbGxhbWEgc2VydmVyLi4uIikKcmVhZHkgPSBGYWxzZQpmb3IgXyBpbiByYW5nZSgzMCk6CiAgICB0cnk6CiAgICAgICAgaWYgcmVxdWVzdHMuZ2V0KCJodHRwOi8vMTI3LjAuMC4xOjExNDM0LyIsIHRpbWVvdXQ9Mikuc3RhdHVzX2NvZGUgPT0gMjAwOgogICAgICAgICAgICBsb2coIk9sbGFtYSBzZXJ2ZXIgcmVhZHkiKQogICAgICAgICAgICByZWFkeSA9IFRydWUKICAgICAgICAgICAgYnJlYWsKICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgcGFzcwogICAgdGltZS5zbGVlcCgyKQppZiBub3QgcmVhZHk6CiAgICByYWlzZSBSdW50aW1lRXJyb3IoIk9sbGFtYSBzZXJ2ZXIgZGlkIG5vdCBzdGFydCIpCgpNT0RFTCA9ICJodWlodWlfYWkvcXdlbjIuNS1jb2Rlci1hYmxpdGVyYXRlIgpsb2coZiJQdWxsaW5nIG1vZGVsIHtNT0RFTH0uLi4iKQpzdWJwcm9jZXNzLnJ1bihbIm9sbGFtYSIsICJwdWxsIiwgTU9ERUxdLCBjaGVjaz1UcnVlKQoKbG9nKCJEb3dubG9hZGluZyBjbG91ZGZsYXJlZC4uLiIpCnN1YnByb2Nlc3MucnVuKAogICAgIndnZXQgLXEgaHR0cHM6Ly9naXRodWIuY29tL2Nsb3VkZmxhcmUvY2xvdWRmbGFyZWQvcmVsZWFzZXMvbGF0ZXN0L2Rvd25sb2FkL2Nsb3VkZmxhcmVkLWxpbnV4LWFtZDY0IC1PIGNsb3VkZmxhcmVkIiwKICAgIHNoZWxsPVRydWUsIGNoZWNrPVRydWUsCikKc3VicHJvY2Vzcy5ydW4oImNobW9kICt4IGNsb3VkZmxhcmVkIiwgc2hlbGw9VHJ1ZSwgY2hlY2s9VHJ1ZSkKc3VicHJvY2Vzcy5ydW4oIm12IGNsb3VkZmxhcmVkIC91c3IvbG9jYWwvYmluLyIsIHNoZWxsPVRydWUsIGNoZWNrPVRydWUpCgpsb2coIlN0YXJ0aW5nIENsb3VkZmxhcmUgdHVubmVsLi4uIikKdHVubmVsID0gc3VicHJvY2Vzcy5Qb3BlbigKICAgIFsiY2xvdWRmbGFyZWQiLCAidHVubmVsIiwgIi0tdXJsIiwgImh0dHA6Ly8xMjcuMC4wLjE6MTE0MzQiLCAiLS1uby1hdXRvdXBkYXRlIl0sCiAgICBzdGRvdXQ9c3VicHJvY2Vzcy5QSVBFLCBzdGRlcnI9c3VicHJvY2Vzcy5TVERPVVQsIHRleHQ9VHJ1ZSwgYnVmc2l6ZT0xLAopCgpwYXR0ZXJuID0gcmUuY29tcGlsZShyImh0dHBzOi8vWy1hLXpBLVowLTldK1wudHJ5Y2xvdWRmbGFyZVwuY29tIikKdHVubmVsX3VybCA9IE5vbmUKZm9yIGxpbmUgaW4gdHVubmVsLnN0ZG91dDoKICAgIGxpbmUgPSBsaW5lLnJzdHJpcCgpCiAgICBsb2cobGluZSkKICAgIG1hdGNoID0gcGF0dGVybi5zZWFyY2gobGluZSkKICAgIGlmIG1hdGNoOgogICAgICAgIHR1bm5lbF91cmwgPSBtYXRjaC5ncm91cCgwKQogICAgICAgIGxvZyhmIlRVTk5FTF9VUkw9e3R1bm5lbF91cmx9IikKICAgICAgICBicmVhawoKaWYgbm90IHR1bm5lbF91cmw6CiAgICByYWlzZSBSdW50aW1lRXJyb3IoIk5vIHR1bm5lbCBVUkwgZm91bmQiKQoKIyBXcml0ZSBVUkwgdG8gL2thZ2dsZS93b3JraW5nLyBzbyBpdCBiZWNvbWVzIGEgZG93bmxvYWRhYmxlIGtlcm5lbCBvdXRwdXQuCiMgR2l0SHViIEFjdGlvbnMgd2lsbCBmZXRjaCB0aGlzIGZpbGUgdmlhIHRoZSBLYWdnbGUgQVBJIGFuZCBjb21taXQgaXQuClVSTF9GSUxFLndyaXRlX3RleHQodHVubmVsX3VybCArICJcbiIpCmxvZyhmIldyb3RlIHR1bm5lbCBVUkwgdG8ge1VSTF9GSUxFfSIpCgpsb2coIlR1bm5lbCBlc3RhYmxpc2hlZC4gS2VlcGluZyBrZXJuZWwgYWxpdmUgZm9yIDIgaG91cnMuLi4iKQp0aW1lLnNsZWVwKDcyMDApCg=="
+        run: |
+          mkdir -p kaggle-kernel
+          cd kaggle-kernel
+
+          cat > kernel-metadata.json <<EOF
+          {
+            "id": "${{ steps.kernel.outputs.id }}",
+            "title": "${{ steps.kernel.outputs.title }}",
+            "code_file": "script.py",
+            "language": "python",
+            "kernel_type": "script",
+            "is_private": true,
+            "enable_gpu": true,
+            "enable_internet": true
+          }
+          EOF
+
+          printf '%s' "$SCRIPT_B64" | base64 -d > script.py
+
+          echo "--- Generated script.py (first 25 lines) ---"
+          head -n 25 script.py
+          echo "--- Syntax check ---"
+          python3 -m py_compile script.py && echo "✅ script.py compiles"
+
+      - name: Push kernel to Kaggle
+        run: |
+          cd kaggle-kernel
+          kaggle kernels push -p .
+
+      - name: Wait for kernel to publish tunnel URL
+        id: wait_url
+        env:
+          KERNEL_ID: ${{ steps.kernel.outputs.id }}
+        run: |
+          mkdir -p kernel-output
+          echo "Polling kernel $KERNEL_ID for ollama_url.txt (up to 25 minutes)..."
+
+          TUNNEL_URL=""
+          for i in $(seq 1 50); do
+            echo "[$i/50] Checking kernel status / output..."
+            STATUS=$(kaggle kernels status "$KERNEL_ID" 2>&1 || true)
+            echo "$STATUS"
+
+            # Try to pull outputs (only present once the kernel has emitted them)
+            kaggle kernels output "$KERNEL_ID" -p kernel-output --force >/dev/null 2>&1 || true
+
+            if [ -f kernel-output/ollama_url.txt ]; then
+              TUNNEL_URL=$(tr -d '\r\n' < kernel-output/ollama_url.txt | xargs)
+              if [ -n "$TUNNEL_URL" ]; then
+                echo "✅ Got tunnel URL: $TUNNEL_URL"
+                break
+              fi
+            fi
+
+            # Bail early if the kernel hard-failed
+            if echo "$STATUS" | grep -qiE "error|failed"; then
+              echo "❌ Kernel reported error state."
+              exit 1
+            fi
+
+            sleep 30
+          done
+
+          if [ -z "$TUNNEL_URL" ]; then
+            echo "❌ Timed out waiting for tunnel URL"
+            exit 1
+          fi
+
+          # Basic sanity check on URL format
+          if ! echo "$TUNNEL_URL" | grep -qE '^https://[-a-zA-Z0-9]+\.trycloudflare\.com$'; then
+            echo "❌ Unexpected URL format: $TUNNEL_URL"
+            exit 1
+          fi
+
+          echo "tunnel_url=$TUNNEL_URL" >> $GITHUB_OUTPUT
+
+      - name: Commit Ollama URL back to repo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TUNNEL_URL: ${{ steps.wait_url.outputs.tunnel_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p frontend
+          printf '%s\n' "$TUNNEL_URL" > frontend/ollama_url.txt
+          echo "Wrote frontend/ollama_url.txt = $TUNNEL_URL"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add frontend/ollama_url.txt
+          if git diff --cached --quiet; then
+            echo "No change in ollama_url.txt — nothing to commit."
+            exit 0
+          fi
+
+          git commit -m "Update Ollama tunnel URL from Kaggle GPU run"
+          # Push using the built-in GITHUB_TOKEN (no PAT needed thanks to permissions: contents: write)
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" HEAD:${GITHUB_REF#refs/heads/}
+
+          echo "✅ Committed and pushed tunnel URL to $REPO"
