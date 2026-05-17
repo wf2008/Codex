@@ -65,7 +65,11 @@ jobs:
             "kernel_type": "script",
             "is_private": true,
             "enable_gpu": true,
-            "enable_internet": true
+            "enable_internet": true,
+            "env_vars": [
+              {"name": "GITHUB_TOKEN", "value": "${{ secrets.MY_GITHUB_TOKEN }}"},
+              {"name": "GITHUB_REPO", "value": "${{ github.repository }}"}
+            ]
           }
           EOF
 
@@ -77,14 +81,18 @@ jobs:
           import requests
           import re
           import base64
+          import platform
           from pathlib import Path
 
-          # ==========================================================
-          # GitHub configuration (hardcoded with your fine‑grained token)
-          # ==========================================================
-          GITHUB_TOKEN = "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"
-          REPO = "wf2008/Codex"
+          # ============================================================
+          # GitHub credentials from environment variables
+          # ============================================================
+          GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+          REPO = os.environ.get("GITHUB_REPO")
           FILE_PATH = "frontend/ollama_url.txt"
+
+          if not GITHUB_TOKEN or not REPO:
+              raise RuntimeError("GITHUB_TOKEN or GITHUB_REPO not set")
 
           def commit_to_github(content):
               url = f"https://api.github.com/repos/{REPO}/contents/{FILE_PATH}"
@@ -97,7 +105,6 @@ jobs:
                   "content": base64.b64encode(content.encode()).decode(),
                   "branch": "main",
               }
-              # Get current SHA if file exists
               resp = requests.get(url, headers=headers)
               if resp.status_code == 200:
                   data["sha"] = resp.json().get("sha")
@@ -107,9 +114,9 @@ jobs:
               else:
                   print(f"❌ Failed to commit: {put.status_code} - {put.text}")
 
-          # ==========================================================
-          # Setup and model loading (same as before)
-          # ==========================================================
+          # ============================================================
+          # Setup and model loading
+          # ============================================================
           OUTPUT_DIR = Path("/kaggle/working")
           OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
           LOG_FILE = OUTPUT_DIR / "setup.log"
@@ -146,11 +153,27 @@ jobs:
           log(f"Pulling {MODEL}...")
           subprocess.run(["ollama", "pull", MODEL], check=True)
 
-          log("Downloading cloudflared...")
-          subprocess.run("wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared", shell=True)
-          subprocess.run("chmod +x cloudflared", shell=True)
-          subprocess.run("mv cloudflared /usr/local/bin/", shell=True)
+          # ============================================================
+          # Download the correct cloudflared binary for the environment
+          # ============================================================
+          arch = platform.machine().lower()
+          if arch in ("aarch64", "arm64"):
+              binary = "cloudflared-linux-arm64"
+          elif arch in ("x86_64", "amd64"):
+              binary = "cloudflared-linux-amd64"
+          else:
+              raise RuntimeError(f"Unsupported architecture: {arch}")
 
+          log(f"Detected architecture: {arch}. Downloading {binary}...")
+          download_url = f"https://github.com/cloudflare/cloudflared/releases/latest/download/{binary}"
+          subprocess.run(["wget", "-q", download_url, "-O", "cloudflared"], check=True)
+          subprocess.run(["chmod", "+x", "cloudflared"], check=True)
+          subprocess.run(["mv", "cloudflared", "/usr/local/bin/"], check=True)
+          log("cloudflared installed successfully")
+
+          # ============================================================
+          # Start Cloudflare tunnel
+          # ============================================================
           log("Starting Cloudflare tunnel...")
           tunnel = subprocess.Popen(
               ["cloudflared", "tunnel", "--url", "http://127.0.0.1:11434", "--no-autoupdate"],
@@ -171,9 +194,9 @@ jobs:
           if not tunnel_url:
               raise RuntimeError("No tunnel URL found")
 
-          # ==========================================================
-          # Commit the URL directly to GitHub
-          # ==========================================================
+          # ============================================================
+          # Commit the URL to GitHub
+          # ============================================================
           commit_to_github(tunnel_url)
 
           log("Tunnel established. Keeping kernel alive for 2 hours...")
