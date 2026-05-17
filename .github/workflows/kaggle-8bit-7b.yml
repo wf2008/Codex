@@ -87,29 +87,29 @@ jobs:
         env:
           KERNEL_ID: ${{ steps.kernel.outputs.id }}
         run: |
-          mkdir -p kernel-output
-          echo "Polling kernel $KERNEL_ID for ollama_url.txt (up to 25 minutes)..."
+          echo "Polling kernel logs for TUNNEL_URL (up to 25 minutes)..."
 
           TUNNEL_URL=""
           for i in $(seq 1 50); do
-            echo "[$i/50] Checking kernel status / output..."
-            STATUS=$(kaggle kernels status "$KERNEL_ID" 2>&1 || true)
-            echo "$STATUS"
-
-            # Try to pull outputs (only present once the kernel has emitted them)
-            kaggle kernels output "$KERNEL_ID" -p kernel-output --force >/dev/null 2>&1 || true
-
-            if [ -f kernel-output/ollama_url.txt ]; then
-              TUNNEL_URL=$(tr -d '\r\n' < kernel-output/ollama_url.txt | xargs)
-              if [ -n "$TUNNEL_URL" ]; then
-                echo "✅ Got tunnel URL: $TUNNEL_URL"
-                break
-              fi
+            echo "[$i/50] Checking kernel logs..."
+            
+            # Fetch kernel logs directly
+            LOGS=$(kaggle kernels output "$KERNEL_ID" --kernel-opt log 2>&1 || true)
+            
+            # Extract tunnel URL from logs using regex
+            FOUND_URL=$(echo "$LOGS" | grep -oE 'TUNNEL_URL=https://[-a-zA-Z0-9]+\.trycloudflare\.com' | head -n1 | cut -d'=' -f2)
+            
+            if [ -n "$FOUND_URL" ]; then
+              TUNNEL_URL="$FOUND_URL"
+              echo "✅ Got tunnel URL from logs: $TUNNEL_URL"
+              break
             fi
 
-            # Bail early if the kernel hard-failed
+            # Check kernel status for errors
+            STATUS=$(kaggle kernels status "$KERNEL_ID" 2>&1 || true)
             if echo "$STATUS" | grep -qiE "error|failed"; then
-              echo "❌ Kernel reported error state."
+              echo "❌ Kernel reported error state:"
+              echo "$STATUS"
               exit 1
             fi
 
@@ -117,7 +117,7 @@ jobs:
           done
 
           if [ -z "$TUNNEL_URL" ]; then
-            echo "❌ Timed out waiting for tunnel URL"
+            echo "❌ Timed out waiting for tunnel URL in logs"
             exit 1
           fi
 
