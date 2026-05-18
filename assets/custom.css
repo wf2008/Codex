@@ -1,0 +1,109 @@
+/* WfAgent Pro Custom Styles */
+
+/* Hide Streamlit branding */
+footer {display: none !important;}
+header {visibility: hidden;}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #0f1117;
+}
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
+
+/* Chat message styling */
+.stChatMessage {
+    border-radius: 12px !important;
+    margin: 8px 0 !important;
+}
+
+/* Code blocks */
+pre {
+    background: #1e1e2e !important;
+    border-radius: 10px !important;
+    border: 1px solid #334155 !important;
+}
+
+/* Buttons */
+.stButton > button {
+    border-radius: 8px !important;
+    transition: all 0.2s !important;
+}
+.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background: #0f1117 !important;
+    border-right: 1px solid #1e293b !important;
+}
+
+/* File uploader */
+[data-testid="stFileUploader"] {
+    border: 2px dashed #334155 !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+}
+[data-testid="stFileUploader"]:hover {
+    border-color: #6366f1 !important;
+}
+
+/* Agent status badge */
+.agent-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    gap: 6px;
+}
+.agent-badge.planning { background: #f59e0b20; color: #f59e0b; border: 1px solid #f59e0b40; }
+.agent-badge.executing { background: #6366f120; color: #6366f1; border: 1px solid #6366f140; }
+.agent-badge.completed { background: #10b98120; color: #10b981; border: 1px solid #10b98140; }
+.agent-badge.failed { background: #ef444420; color: #ef4444; border: 1px solid #ef444440; }
+
+/* Tool execution log */
+.tool-log {
+    background: #1e1e2e;
+    border-left: 3px solid #6366f1;
+    padding: 12px;
+    margin: 8px 0;
+    border-radius: 0 8px 8px 0;
+    font-family: 'Fira Code', monospace;
+    font-size: 13px;
+}
+
+/* Progress indicator */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+.pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Toast notifications */
+.toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 24px;
+    border-radius: 12px;
+    background: #1e1e2e;
+    border: 1px solid #334155;
+    color: #e2e8f0;
+    z-index: 9999;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
