@@ -289,209 +289,179 @@ prompt = st.chat_input(
 
 if prompt:
     prompt = sanitize_input(prompt)
-    current_url = get_current_url()
-
-    if not current_url:
-        add_message("user", prompt)
-        add_message("assistant", "⏳ Waiting for the AI tunnel URL. Please start your Kaggle notebook via GitHub Actions.")
-        st.rerun()
-
-    # Add user message
     add_message("user", prompt)
-    st.rerun()
 
-# ============================================================
-# PROCESSING LOGIC (runs after rerun)
-# ============================================================
-history = get_chat_history()
-if history and history[-1].get("role") == "user":
-    last_user_msg = history[-1]["content"]
-    current_url = get_current_url()
-
-    if current_url:
-        endpoint = current_url.rstrip("/") + "/v1/chat/completions"
-
-        # Build messages for API
-        api_messages = []
-        for msg in history[:-1]:  # Exclude last user message (will be added)
-            if msg["role"] in ["user", "assistant", "system"]:
-                api_messages.append({"role": msg["role"], "content": msg["content"]})
-        api_messages.append({"role": "user", "content": last_user_msg})
-
-        # Tool definitions
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "web_search",
-                    "description": "Search the web using DuckDuckGo/SearXNG for fresh information.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {"type": "string"},
-                            "max_results": {"type": "integer", "default": 5}
-                        },
-                        "required": ["query"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "web_scraper",
-                    "description": "Extract text content from a specific URL.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "url": {"type": "string"},
-                            "max_chars": {"type": "integer", "default": 8000}
-                        },
-                        "required": ["url"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "run_bash_command",
-                    "description": "Execute a bash command in the sandboxed workspace.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "command": {"type": "string"}
-                        },
-                        "required": ["command"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "run_python_code",
-                    "description": "Execute Python code in the sandboxed workspace.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "code": {"type": "string"}
-                        },
-                        "required": ["code"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "run_playwright_script",
-                    "description": "Run a Playwright browser automation script.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "script": {"type": "string"}
-                        },
-                        "required": ["script"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "preview_html",
-                    "description": "Render HTML/CSS/JS in the live preview panel.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "html_code": {"type": "string"}
-                        },
-                        "required": ["html_code"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "auto_visualize",
-                    "description": "Generate Plotly visualization code from CSV/JSON data.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "data_text": {"type": "string"},
-                            "chart_type": {"type": "string", "default": "auto"}
-                        },
-                        "required": ["data_text"]
-                    }
-                }
-            },
-        ]
-
-        available_functions = {
-            "web_search": web_search,
-            "web_scraper": web_scraper,
-            "run_bash_command": execute_bash,
-            "run_python_code": run_python,
-            "run_playwright_script": run_playwright_script,
-            "preview_html": preview_html,
-            "auto_visualize": auto_visualize,
-        }
-
-        # Add thinking message
-        add_message("assistant", "🤔 Thinking...", {"status": "thinking"})
+    current_url = fetch_tunnel_url() or get_current_url()
+    if not current_url:
+        add_message(
+            "assistant",
+            "⏳ Waiting for the AI tunnel URL from your GitHub repo (`frontend/ollama_url.txt`). Please start your Kaggle notebook via GitHub Actions, then click Refresh URL in the sidebar.",
+        )
+        save_current_session()
         st.rerun()
 
-        # ============================================================
-        # AGENT MODE
-        # ============================================================
+    endpoint = current_url.rstrip("/")
+    if endpoint.endswith("/v1/chat/completions"):
+        endpoint = endpoint[: -len("/v1/chat/completions")]
+
+    history = get_chat_history()
+    api_messages = [
+        {"role": msg["role"], "content": msg["content"]}
+        for msg in history
+        if msg.get("role") in ["user", "assistant", "system"]
+    ]
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web using DuckDuckGo/SearXNG for fresh information.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "max_results": {"type": "integer", "default": 5}
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "web_scraper",
+                "description": "Extract text content from a specific URL.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"},
+                        "max_chars": {"type": "integer", "default": 8000}
+                    },
+                    "required": ["url"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "run_bash_command",
+                "description": "Execute a bash command in the sandboxed workspace.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {"type": "string"}
+                    },
+                    "required": ["command"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "run_python_code",
+                "description": "Execute Python code in the sandboxed workspace.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "code": {"type": "string"}
+                    },
+                    "required": ["code"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "run_playwright_script",
+                "description": "Run a Playwright browser automation script.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "script": {"type": "string"}
+                    },
+                    "required": ["script"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "preview_html",
+                "description": "Render HTML/CSS/JS in the live preview panel.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "html_code": {"type": "string"}
+                    },
+                    "required": ["html_code"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "auto_visualize",
+                "description": "Generate Plotly visualization code from CSV/JSON data.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "data_text": {"type": "string"},
+                        "chart_type": {"type": "string", "default": "auto"}
+                    },
+                    "required": ["data_text"]
+                }
+            }
+        },
+    ]
+
+    available_functions = {
+        "web_search": web_search,
+        "web_scraper": web_scraper,
+        "run_bash_command": execute_bash,
+        "run_python_code": run_python,
+        "run_playwright_script": run_playwright_script,
+        "preview_html": preview_html,
+        "auto_visualize": auto_visualize,
+    }
+
+    try:
         if st.session_state.mode == "agent":
-            try:
-                with st.spinner(f"🤖 Agent working on: {last_user_msg[:50]}..."):
-                    task = run_agent(endpoint, last_user_msg, api_messages[:-1], max_steps=MAX_AGENT_STEPS)
-                    st.session_state.current_task = task
+            with st.spinner(f"🤖 Agent working on: {prompt[:50]}..."):
+                task = run_agent(endpoint, prompt, api_messages[:-1], max_steps=MAX_AGENT_STEPS)
 
-                    # Build response from task results
-                    response_parts = []
-                    for step in task.steps:
-                        if step.status == "completed" and step.result:
-                            response_parts.append(f"**{step.description}**\n\n{truncate_text(str(step.result), 1500)}")
+            response_parts = []
+            for step in task.steps:
+                if step.status == "completed" and step.result:
+                    response_parts.append(f"**{step.description}**\n\n{truncate_text(str(step.result), 1500)}")
+                elif step.error:
+                    response_parts.append(f"**{step.description}**\n\n❌ {step.error}")
 
-                    final_response = "\n\n---\n\n".join(response_parts) if response_parts else "Agent completed all steps."
-
-                    # Update the thinking message
-                    history = get_chat_history()
-                    if history and history[-1].get("role") == "assistant" and history[-1].get("metadata", {}).get("status") == "thinking":
-                        history[-1]["content"] = final_response
-                        history[-1]["metadata"] = {
-                            "status": "completed",
-                            "task": task.to_dict(),
-                            "execution_time": task.completed_at - task.created_at if task.completed_at else 0,
-                        }
-                        st.session_state[get_chat_history.__wrapped__.__code__.co_consts[0] if hasattr(get_chat_history, '__wrapped__') else "wfagent_chat_history"] = history
-
-                    st.session_state.current_task = None
-                    save_current_session()
-                    st.rerun()
-
-            except Exception as e:
-                history = get_chat_history()
-                if history and history[-1].get("role") == "assistant":
-                    history[-1]["content"] = f"❌ Agent error: {str(e)}"
-                    history[-1]["metadata"] = {"status": "error", "error": str(e)}
-                st.session_state.current_task = None
-                st.rerun()
-
-        # ============================================================
-        # CHAT MODE (Tool Loop)
-        # ============================================================
+            final_response = "\n\n---\n\n".join(response_parts) if response_parts else "Agent completed all steps."
+            add_message(
+                "assistant",
+                final_response,
+                {
+                    "status": "completed",
+                    "task": task.to_dict(),
+                    "execution_time": task.completed_at - task.created_at if task.completed_at else 0,
+                },
+            )
+            st.session_state.current_task = None
         else:
-            try:
+            with st.spinner("🤔 Thinking..."):
                 start_time = time.time()
                 tool_log = []
                 latest_html = None
                 max_tool_rounds = 5
+                final_content = None
+                status_box = st.empty()
 
                 for round_num in range(max_tool_rounds):
                     if st.session_state.stop_flag:
+                        final_content = "⏹️ Request stopped by user."
                         break
 
-                    # Call AI
                     data = chat_completion(endpoint, api_messages, tools=tools)
                     choice = data.get("choices", [{}])[0]
                     assistant_msg = choice.get("message", {})
@@ -499,26 +469,14 @@ if history and history[-1].get("role") == "user":
                     tool_calls = assistant_msg.get("tool_calls", []) or []
 
                     if not tool_calls:
-                        # Final answer
-                        exec_time = time.time() - start_time
-                        history = get_chat_history()
-                        if history and history[-1].get("role") == "assistant":
-                            history[-1]["content"] = content
-                            history[-1]["metadata"] = {
-                                "execution_time": exec_time,
-                                "tool_calls": tool_log,
-                                "html_preview": latest_html,
-                            }
-                        save_current_session()
-                        st.session_state.stop_flag = False
-                        st.rerun()
+                        final_content = content or "Done."
                         break
 
-                    # Execute tools
                     api_messages.append(assistant_msg)
 
                     for tc in tool_calls:
                         if st.session_state.stop_flag:
+                            final_content = "⏹️ Request stopped by user."
                             break
 
                         func = tc.get("function", {})
@@ -527,17 +485,11 @@ if history and history[-1].get("role") == "user":
 
                         try:
                             args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-                        except:
+                        except Exception:
                             args = {}
 
-                        # Update thinking message
-                        status_msg = f"🔧 Running **{func_name}**..."
-                        history = get_chat_history()
-                        if history and history[-1].get("role") == "assistant":
-                            history[-1]["content"] = "\n\n".join(tool_log + [status_msg])
-                        st.rerun()
+                        status_box.markdown(f"🔧 Running **{func_name}**...")
 
-                        # Execute
                         if func_name in available_functions:
                             try:
                                 result = available_functions[func_name](**args)
@@ -546,40 +498,45 @@ if history and history[-1].get("role") == "user":
                         else:
                             result = f"Unknown tool: {func_name}"
 
-                        # Handle HTML preview
                         if func_name == "preview_html":
                             latest_html = result
 
-                        # Log
                         tool_log.append(f"✅ **{func_name}**\n```\n{truncate_text(str(result), 1000)}\n```")
-
-                        # Add tool result to messages
                         api_messages.append({
                             "role": "tool",
                             "tool_call_id": tc.get("id", func_name),
                             "content": str(result),
                         })
 
-                # If max rounds reached
-                if round_num >= max_tool_rounds - 1:
-                    exec_time = time.time() - start_time
-                    history = get_chat_history()
-                    if history and history[-1].get("role") == "assistant":
-                        history[-1]["content"] = "\n\n".join(tool_log + ["\n⚠️ Max tool rounds reached. Here's what I found so far."])
-                        history[-1]["metadata"] = {
-                            "execution_time": exec_time,
-                            "tool_calls": tool_log,
-                            "html_preview": latest_html,
-                        }
-                    save_current_session()
-                    st.rerun()
+                    if final_content:
+                        break
 
-            except Exception as e:
-                history = get_chat_history()
-                if history and history[-1].get("role") == "assistant":
-                    history[-1]["content"] = f"❌ Error: {str(e)}"
-                    history[-1]["metadata"] = {"status": "error", "error": str(e)}
-                st.rerun()
+                exec_time = time.time() - start_time
+                status_box.empty()
+
+                if final_content is None:
+                    final_content = "\n\n".join(tool_log + ["⚠️ Max tool rounds reached. Here's what I found so far."])
+
+                add_message(
+                    "assistant",
+                    final_content,
+                    {
+                        "execution_time": exec_time,
+                        "tool_calls": tool_log,
+                        "html_preview": latest_html,
+                    },
+                )
+                st.session_state.stop_flag = False
+
+        save_current_session()
+        st.rerun()
+
+    except Exception as e:
+        add_message("assistant", f"❌ Error: {str(e)}", {"status": "error", "error": str(e)})
+        st.session_state.current_task = None
+        st.session_state.stop_flag = False
+        save_current_session()
+        st.rerun()
 
 # ============================================================
 # FOOTER CONTROLS
