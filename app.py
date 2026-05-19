@@ -254,7 +254,7 @@ if st.session_state.current_task and st.session_state.mode == "agent":
 with st.expander("📎 Attach Files", expanded=False):
     uploaded = st.file_uploader(
         "Upload any file (code, data, images, documents)",
-        accept_multiple=True,
+        accept_multiple_files=True,
         key="file_uploader",
     )
     if uploaded:
