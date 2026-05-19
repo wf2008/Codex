@@ -1,4 +1,4 @@
-"""HTML preview generator for live rendering"""
+"""HTML preview generator for live rendering."""
 import html as html_module
 
 
@@ -33,5 +33,5 @@ def preview_html(html_code: str) -> str:
         "<iframe "
         "style='width:100%;height:760px;border:1px solid #27324a;border-radius:14px;background:#0b1020' "
         "sandbox='allow-scripts allow-same-origin allow-modals allow-forms allow-downloads' "
-        f"srcdoc="{escaped}"></iframe>"
+        f'srcdoc="{escaped}"></iframe>'
     )
