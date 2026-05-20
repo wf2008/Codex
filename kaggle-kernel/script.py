@@ -23,13 +23,50 @@ GITHUB_TOKEN = "__GITHUB_TOKEN__"
 REPO = "__REPO__"
 FILE_PATH = "frontend/ollama_url.txt"
 # ── Kaggle token setup (robust) ───────────────────────────────────────────────
-kaggle_token = os.environ.get("KAGGLE_API_TOKEN", "").strip()
-if kaggle_token:
+def _resolve_kaggle_credentials() -> dict | None:
+    username = os.environ.get("KAGGLE_USERNAME", "").strip()
+    key = os.environ.get("KAGGLE_KEY", "").strip()
+    token = os.environ.get("KAGGLE_API_TOKEN", "").strip()
+
+    if username and key:
+        return {"username": username, "key": key}
+
+    if not token:
+        return None
+
+    token = token.strip().strip("'\"")
+
+    # Common case: full kaggle.json pasted into the secret.
     try:
-        kaggle_data = json.loads(kaggle_token)
+        data = json.loads(token)
+        if isinstance(data, dict) and data.get("username") and data.get("key"):
+            return {"username": str(data["username"]).strip(), "key": str(data["key"]).strip()}
     except json.JSONDecodeError:
-        print("::error::KAGGLE_API_TOKEN is not valid JSON. Paste the full kaggle.json content into this secret.", flush=True)
-        sys.exit(1)
+        pass
+
+    # Also support base64-encoded kaggle.json content.
+    try:
+        decoded = base64.b64decode(token + "===", validate=False).decode("utf-8").strip()
+        data = json.loads(decoded)
+        if isinstance(data, dict) and data.get("username") and data.get("key"):
+            return {"username": str(data["username"]).strip(), "key": str(data["key"]).strip()}
+    except Exception:
+        pass
+
+    # If the token is just the raw Kaggle key, combine it with KAGGLE_USERNAME.
+    if username:
+        return {"username": username, "key": token}
+
+    print(
+        "::error::Could not build kaggle.json from secrets. Provide KAGGLE_USERNAME + KAGGLE_KEY, "
+        "or set KAGGLE_API_TOKEN to the full kaggle.json JSON (or its base64 form).",
+        flush=True,
+    )
+    sys.exit(1)
+
+
+kaggle_data = _resolve_kaggle_credentials()
+if kaggle_data:
     kaggle_dir = os.path.expanduser("~/.kaggle")
     os.makedirs(kaggle_dir, exist_ok=True)
     kaggle_path = os.path.join(kaggle_dir, "kaggle.json")
