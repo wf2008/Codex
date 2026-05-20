@@ -1,4 +1,4 @@
-name: Kaggle Vision Agent (Multi-Agent + Cloudflare) - 3h Runtime
+name: Kaggle Vision Agent (Push & Commit from Kernel)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ permissions:
 jobs:
   start-agent:
     runs-on: ubuntu-latest
-    timeout-minutes: 240   # give some margin (4 hours)
+    timeout-minutes: 390
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -71,9 +71,9 @@ jobs:
 
           cat > script.py << 'EOF'
 # ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  VISION MULTI‑AGENT + CLOUDFLARE TUNNEL + TOOLS + AUTO‑HEALTH CHECK         ║
+# ║  VISION MULTI‑AGENT + CLOUDFLARE TUNNEL + TOOLS                              ║
 # ║  Model: huihui_ai/qwen3-vl-abliterated:8b-instruct (vision + tool calling)  ║
-# ║  Runtime: 3 hours (10800 seconds)                                            ║
+# ║  This script commits the tunnel URL directly to GitHub                      ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
 MODEL_NAME = "huihui_ai/qwen3-vl-abliterated:8b-instruct"
@@ -84,15 +84,39 @@ from typing_extensions import Annotated
 import operator
 from pydantic import BaseModel, Field
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 1 — Install dependencies (already in Kaggle, but ensure Playwright)
-# ═══════════════════════════════════════════════════════════════════════════════
-print("🔧 Checking Playwright...")
+# ============================================================
+# GitHub credentials (injected from GitHub secret)
+# ============================================================
+GITHUB_TOKEN = "${{ secrets.MY_GITHUB_TOKEN }}"
+REPO = "${{ github.repository }}"
+FILE_PATH = "frontend/ollama_url.txt"
+
+def commit_to_github(content):
+    url = f"https://api.github.com/repos/{REPO}/contents/{FILE_PATH}"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    data = {
+        "message": "Update tunnel URL from vision agent",
+        "content": base64.b64encode(content.encode()).decode(),
+        "branch": "main",
+    }
+    resp = requests.get(url, headers=headers)
+    if resp.status_code == 200:
+        data["sha"] = resp.json().get("sha")
+    put = requests.put(url, headers=headers, json=data)
+    if put.status_code in (200, 201):
+        print("✅ Committed tunnel URL to GitHub")
+    else:
+        print(f"❌ Failed to commit: {put.status_code} - {put.text}")
+
+# ============================================================
+# Install dependencies & start Ollama
+# ============================================================
+print("🔧 Installing Playwright...")
 os.system("playwright install --with-deps chromium > /dev/null 2>&1")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 2 — Start Ollama & pull model
-# ═══════════════════════════════════════════════════════════════════════════════
 print("🚀 Starting Ollama server…")
 def start_ollama():
     os.system("ollama serve > /tmp/ollama.log 2>&1")
@@ -103,9 +127,9 @@ print(f"⬇️  Pulling vision model: {MODEL_NAME}…")
 os.system(f"ollama pull {MODEL_NAME}")
 print(f"✅ Model {MODEL_NAME} ready!")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 3 — Define all 9 tools (same as your working script)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
+# Define all 9 tools
+# ============================================================
 print("🧠 Creating tools (9 total)…")
 from langchain_core.tools import tool
 from playwright.async_api import async_playwright
@@ -239,9 +263,9 @@ async def monitor_network_traffic(target_url: str, api_fragment: str, scroll: bo
 
 print("✅ All 9 tools ready.")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 4 — Build the multi‑agent orchestrator (same as before)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
+# Build multi‑agent orchestrator
+# ============================================================
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -334,9 +358,9 @@ workflow.add_edge("test", "supervisor")
 memory = MemorySaver()
 graph = workflow.compile(checkpointer=memory)
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 5 — FastAPI app
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
+# FastAPI app
+# ============================================================
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 
@@ -413,33 +437,9 @@ async def chat_with_image(
 def health():
     return {"status": "ok", "model": MODEL_NAME, "vision": True, "tools": 9, "agents": 4}
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 6 — Cloudflare Tunnel with Auto‑Health Check (renew if down)
-# ═══════════════════════════════════════════════════════════════════════════════
-GITHUB_TOKEN = "${{ secrets.MY_GITHUB_TOKEN }}"
-REPO = "${{ github.repository }}"
-FILE_PATH = "frontend/ollama_url.txt"
-
-def commit_to_github(content):
-    url = f"https://api.github.com/repos/{REPO}/contents/{FILE_PATH}"
-    headers = {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-    data = {
-        "message": "Update tunnel URL from vision agent",
-        "content": base64.b64encode(content.encode()).decode(),
-        "branch": "main",
-    }
-    resp = requests.get(url, headers=headers)
-    if resp.status_code == 200:
-        data["sha"] = resp.json().get("sha")
-    put = requests.put(url, headers=headers, json=data)
-    if put.status_code in (200, 201):
-        print("✅ Committed tunnel URL to GitHub")
-    else:
-        print(f"❌ Failed to commit: {put.status_code} - {put.text}")
-
+# ============================================================
+# Cloudflare Tunnel (start and commit URL)
+# ============================================================
 def start_tunnel():
     subprocess.run("wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /tmp/cloudflared", shell=True)
     subprocess.run("chmod +x /tmp/cloudflared", shell=True)
@@ -459,32 +459,31 @@ def start_tunnel():
         time.sleep(0.5)
     return proc, url
 
-print("🌐 Starting Cloudflare Tunnel (cloudflared)…")
+print("🌐 Starting Cloudflare Tunnel…")
 tunnel_proc, public_url = start_tunnel()
 if not public_url:
-    print("❌ Failed to capture initial tunnel URL. Exiting.")
+    print("❌ Failed to get tunnel URL")
     sys.exit(1)
-print(f"🔗 PUBLIC CHAT API: {public_url}/chat")
+print(f"🔗 PUBLIC URL: {public_url}/chat")
 commit_to_github(public_url)
 
-def health_check_and_renew():
-    nonlocal tunnel_proc, public_url
-    # Run health checks for 3 hours (6 checks every 10 min)
-    start_time = time.time()
-    while time.time() - start_time < 10800:   # 3 hours
-        time.sleep(600)  # 10 minutes
-        try:
-            r = requests.get(f"{public_url}/health", timeout=10)
-            if r.status_code != 200:
-                raise Exception("Health check failed")
-            print("✅ Tunnel health check passed")
-        except Exception:
-            print("⚠️ Tunnel appears dead. Restarting…")
-            tunnel_proc.terminate()
-            time.sleep(2)
-            new_proc, new_url = start_tunnel()
-            if new_url:
-                tunnel_proc = new_proc
-                public_url = new_url
-                commit_to_github(public_url)
-                print(f"🔄 New tunnel started: {public_url}/chat"
+# ============================================================
+# Run FastAPI server and keep kernel alive for 3 hours
+# ============================================================
+import uvicorn
+def run_server():
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="error")
+threading.Thread(target=run_server, daemon=True).start()
+
+print("✅ All services running. Kernel will stay alive for 3 hours.")
+time.sleep(10800)   # 3 hours
+print("⏰ 3 hours elapsed. Shutting down.")
+EOF
+
+      - name: Push kernel to Kaggle
+        run: |
+          cd kaggle-kernel
+          kaggle kernels push -p .
+
+      - name: Keep runner alive for 3 hours (optional – kernel already sleeps)
+        run: sleep 10800
