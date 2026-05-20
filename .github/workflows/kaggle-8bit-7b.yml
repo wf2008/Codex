@@ -25,32 +25,23 @@ jobs:
       - name: Set up Kaggle API token
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
-          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
-          mkdir -p ~/.kaggle
-          if [ -n "$KAGGLE_USERNAME" ] && [ -n "$KAGGLE_KEY" ]; then
-            echo "🔐 Using KAGGLE_USERNAME + KAGGLE_KEY secrets"
-            printf '{"username":"%s","key":"%s"}\n' "$KAGGLE_USERNAME" "$KAGGLE_KEY" > ~/.kaggle/kaggle.json
-          elif [ -n "$KAGGLE_API_TOKEN" ]; then
-            echo "🔐 Using raw KAGGLE_API_TOKEN secret (expected to be the kaggle.json JSON)"
-            echo "$KAGGLE_API_TOKEN" > ~/.kaggle/kaggle.json
-          else
-            echo "❌ No Kaggle credentials found. Set KAGGLE_USERNAME + KAGGLE_KEY or KAGGLE_API_TOKEN."
+          if [ -z "$KAGGLE_API_TOKEN" ]; then
+            echo "❌ KAGGLE_API_TOKEN secret not set"
             exit 1
           fi
-          chmod 600 ~/.kaggle/kaggle.json
-          python -c "import json,os; d=json.load(open(os.path.expanduser('~/.kaggle/kaggle.json'))); assert 'username' in d and 'key' in d, 'kaggle.json must contain username and key'; print('✅ kaggle.json OK for user:', d['username'])"
+          mkdir -p ~/.kaggle
+          echo "$KAGGLE_API_TOKEN" > ~/.kaggle/access_token
+          chmod 600 ~/.kaggle/access_token
+          echo "KAGGLE_API_TOKEN=$KAGGLE_API_TOKEN" >> "$GITHUB_ENV"
+          echo "✅ Kaggle API token configured using access_token style"
 
       - name: Resolve Kaggle username
         id: username
         run: |
           USERNAME="${{ secrets.KAGGLE_USERNAME }}"
           if [ -z "$USERNAME" ]; then
-            USERNAME=$(python -c "import json,os;print(json.load(open(os.path.expanduser('~/.kaggle/kaggle.json')))['username'])")
-          fi
-          if [ -z "$USERNAME" ]; then
-            echo "❌ Could not resolve Kaggle username"
+            echo "❌ KAGGLE_USERNAME secret not set"
             exit 1
           fi
           echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
