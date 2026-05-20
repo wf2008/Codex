@@ -329,19 +329,38 @@ def test_node(state):
     return {"messages": [test_llm.invoke(messages)]}
 
 
+def synthesis_node(state):
+    history = state["messages"]
+    prompt = SystemMessage(content=(
+        "You are the final summariser. Based on the entire conversation above, "
+        "write a clear, concise answer to the user's original request. "
+        "Include the results from research, code, and tests. Do NOT call any tools."
+    ))
+    synthesis_llm = ChatOpenAI(
+        base_url="http://localhost:11434/v1",
+        api_key="ollama",
+        model=MODEL_NAME,
+        temperature=0,
+    )
+    response = synthesis_llm.invoke([prompt] + history)
+    return {"messages": [response]}
+
+
 class SupervisorDecision(BaseModel):
-    next_agent: Literal["research", "code", "test", "FINISH"] = Field(
-        description="Next agent to call, or FINISH if done."
+    next_agent: Literal["research", "code", "test", "synthesis", "FINISH"] = Field(
+        description="Next agent: 'research', 'code', 'test', 'synthesis', or 'FINISH' if final summary already generated."
     )
     reason: str = Field(description="Why this agent is being called.")
 
 
 supervisor_system = (
-    "You are the Vision-enabled Orchestrator. You manage three agents: Research, Code, Test. "
+    "You are the Vision-enabled Orchestrator. You manage three worker agents (Research, Code, Test) "
+    "and a Synthesis agent that writes the final answer. "
     "You can SEE images in the conversation. "
-    "Break complex tasks into sub-tasks and delegate. Start with Research if info is needed, "
-    "then Code to build, then Test to validate. Iterate as needed. "
-    "When fully completed, respond with FINISH."
+    "Break the task into sub-tasks and delegate. Start with Research if information is needed, "
+    "then Code to build, then Test to validate. "
+    "Once all work is done, route to 'synthesis' to create a final answer. "
+    "After synthesis, respond with FINISH."
 )
 
 
@@ -357,9 +376,9 @@ def decide_next(state) -> str:
         for tc in last_msg.tool_calls:
             if tc["name"] == "SupervisorDecision":
                 decision = tc["args"].get("next_agent")
-                if decision in ["research", "code", "test"]:
+                if decision in ["research", "code", "test", "synthesis"]:
                     return decision
-                if decision == "FINISH":
+                elif decision == "FINISH":
                     return "finish"
     return "finish"
 
@@ -376,14 +395,22 @@ workflow.add_node("supervisor", supervisor_node)
 workflow.add_node("research", research_node)
 workflow.add_node("code", code_node)
 workflow.add_node("test", test_node)
+workflow.add_node("synthesis", synthesis_node)
 workflow.set_entry_point("supervisor")
 workflow.add_conditional_edges(
     "supervisor", decide_next,
-    {"research": "research", "code": "code", "test": "test", "finish": END},
+    {
+        "research": "research",
+        "code": "code",
+        "test": "test",
+        "synthesis": "synthesis",
+        "finish": END,
+    },
 )
 workflow.add_edge("research", "supervisor")
 workflow.add_edge("code", "supervisor")
 workflow.add_edge("test", "supervisor")
+workflow.add_edge("synthesis", END)
 
 memory = MemorySaver()
 graph = workflow.compile(checkpointer=memory)
@@ -470,7 +497,7 @@ async def chat_with_image(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": MODEL_NAME, "vision": True, "tools": 9, "agents": 4}
+    return {"status": "ok", "model": MODEL_NAME, "vision": True, "tools": 9, "agents": 5}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
