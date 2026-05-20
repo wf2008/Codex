@@ -1,4 +1,4 @@
-name: Kaggle Vision Agent (Push & Commit from Kernel)
+name: Kaggle Vision Agent (Multi-Agent + Cloudflare) - 3h Runtime
 
 on:
   workflow_dispatch:
@@ -9,36 +9,52 @@ permissions:
 jobs:
   start-agent:
     runs-on: ubuntu-latest
-    timeout-minutes: 390
+    timeout-minutes: 240   # 4 hours of margin
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install Kaggle CLI
-        run: pip install kaggle
+        run: pip install --upgrade kaggle
 
       - name: Set up Kaggle API token
         env:
           KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
         run: |
-          if [ -z "$KAGGLE_API_TOKEN" ]; then
-            echo "❌ KAGGLE_API_TOKEN secret not set"
+          mkdir -p ~/.kaggle
+          if [ -n "$KAGGLE_USERNAME" ] && [ -n "$KAGGLE_KEY" ]; then
+            echo "🔐 Using KAGGLE_USERNAME + KAGGLE_KEY secrets"
+            printf '{"username":"%s","key":"%s"}\n' "$KAGGLE_USERNAME" "$KAGGLE_KEY" > ~/.kaggle/kaggle.json
+          elif [ -n "$KAGGLE_API_TOKEN" ]; then
+            echo "🔐 Using raw KAGGLE_API_TOKEN secret (expected to be the kaggle.json JSON)"
+            echo "$KAGGLE_API_TOKEN" > ~/.kaggle/kaggle.json
+          else
+            echo "❌ No Kaggle credentials found. Set KAGGLE_USERNAME + KAGGLE_KEY or KAGGLE_API_TOKEN."
             exit 1
           fi
-          mkdir -p ~/.kaggle
-          echo "$KAGGLE_API_TOKEN" > ~/.kaggle/access_token
-          chmod 600 ~/.kaggle/access_token
-          echo "KAGGLE_API_TOKEN=$KAGGLE_API_TOKEN" >> $GITHUB_ENV
+          chmod 600 ~/.kaggle/kaggle.json
+          python -c "import json,os; d=json.load(open(os.path.expanduser('~/.kaggle/kaggle.json'))); assert 'username' in d and 'key' in d, 'kaggle.json must contain username and key'; print('✅ kaggle.json OK for user:', d['username'])"
 
-      - name: Set Kaggle username
+      - name: Resolve Kaggle username
         id: username
         run: |
           USERNAME="${{ secrets.KAGGLE_USERNAME }}"
           if [ -z "$USERNAME" ]; then
-            echo "❌ KAGGLE_USERNAME secret not set"
+            USERNAME=$(python -c "import json,os;print(json.load(open(os.path.expanduser('~/.kaggle/kaggle.json')))['username'])")
+          fi
+          if [ -z "$USERNAME" ]; then
+            echo "❌ Could not resolve Kaggle username"
             exit 1
           fi
-          echo "username=$USERNAME" >> $GITHUB_OUTPUT
+          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
+          echo "✅ Kaggle username: $USERNAME"
 
       - name: Generate unique kernel name
         id: kernel
@@ -47,16 +63,20 @@ jobs:
           KERNEL_SLUG="vision-agent-${UNIQUE_SUFFIX}"
           KERNEL_ID="${{ steps.username.outputs.username }}/${KERNEL_SLUG}"
           KERNEL_TITLE="${KERNEL_SLUG}"
-          echo "slug=${KERNEL_SLUG}" >> $GITHUB_OUTPUT
-          echo "id=${KERNEL_ID}" >> $GITHUB_OUTPUT
-          echo "title=${KERNEL_TITLE}" >> $GITHUB_OUTPUT
+          echo "slug=${KERNEL_SLUG}" >> "$GITHUB_OUTPUT"
+          echo "id=${KERNEL_ID}"     >> "$GITHUB_OUTPUT"
+          echo "title=${KERNEL_TITLE}" >> "$GITHUB_OUTPUT"
 
-      - name: Create kernel folder
+      - name: Stage kernel files
+        env:
+          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          mkdir -p kaggle-kernel
-          cd kaggle-kernel
-
-          cat > kernel-metadata.json <<EOF
+          set -e
+          rm -rf staging
+          mkdir -p staging
+          # Write metadata
+          cat > staging/kernel-metadata.json <<METAEOF
           {
             "id": "${{ steps.kernel.outputs.id }}",
             "title": "${{ steps.kernel.outputs.title }}",
@@ -67,423 +87,37 @@ jobs:
             "enable_gpu": true,
             "enable_internet": true
           }
-          EOF
+          METAEOF
 
-          cat > script.py << 'EOF'
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  VISION MULTI‑AGENT + CLOUDFLARE TUNNEL + TOOLS                              ║
-# ║  Model: huihui_ai/qwen3-vl-abliterated:8b-instruct (vision + tool calling)  ║
-# ║  This script commits the tunnel URL directly to GitHub                      ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
+          # Copy the script.py committed in the repo
+          cp kaggle-kernel/script.py staging/script.py
 
-MODEL_NAME = "huihui_ai/qwen3-vl-abliterated:8b-instruct"
+          # Inject runtime secrets into the script (placeholders → real values)
+          python - <<'PYEOF'
+          import os, pathlib
+          p = pathlib.Path("staging/script.py")
+          s = p.read_text()
+          s = s.replace("__GITHUB_TOKEN__", os.environ.get("MY_GITHUB_TOKEN", ""))
+          s = s.replace("__REPO__",         os.environ.get("GH_REPO", ""))
+          p.write_text(s)
+          print("✅ Secrets injected into staging/script.py")
+          PYEOF
 
-import os, sys, subprocess, threading, time, json, requests, asyncio, base64
-from typing import TypedDict, List, Literal, Union
-from typing_extensions import Annotated
-import operator
-from pydantic import BaseModel, Field
-
-# ============================================================
-# GitHub credentials (injected from GitHub secret)
-# ============================================================
-GITHUB_TOKEN = "${{ secrets.MY_GITHUB_TOKEN }}"
-REPO = "${{ github.repository }}"
-FILE_PATH = "frontend/ollama_url.txt"
-
-def commit_to_github(content):
-    url = f"https://api.github.com/repos/{REPO}/contents/{FILE_PATH}"
-    headers = {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-    data = {
-        "message": "Update tunnel URL from vision agent",
-        "content": base64.b64encode(content.encode()).decode(),
-        "branch": "main",
-    }
-    resp = requests.get(url, headers=headers)
-    if resp.status_code == 200:
-        data["sha"] = resp.json().get("sha")
-    put = requests.put(url, headers=headers, json=data)
-    if put.status_code in (200, 201):
-        print("✅ Committed tunnel URL to GitHub")
-    else:
-        print(f"❌ Failed to commit: {put.status_code} - {put.text}")
-
-# ============================================================
-# Install dependencies & start Ollama
-# ============================================================
-print("🔧 Installing Playwright...")
-os.system("playwright install --with-deps chromium > /dev/null 2>&1")
-
-print("🚀 Starting Ollama server…")
-def start_ollama():
-    os.system("ollama serve > /tmp/ollama.log 2>&1")
-threading.Thread(target=start_ollama, daemon=True).start()
-time.sleep(5)
-
-print(f"⬇️  Pulling vision model: {MODEL_NAME}…")
-os.system(f"ollama pull {MODEL_NAME}")
-print(f"✅ Model {MODEL_NAME} ready!")
-
-# ============================================================
-# Define all 9 tools
-# ============================================================
-print("🧠 Creating tools (9 total)…")
-from langchain_core.tools import tool
-from playwright.async_api import async_playwright
-from duckduckgo_search import DDGS
-
-@tool
-async def run_playwright(code: str) -> str:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.newPage()
-        try:
-            result = await eval(f"(async () => {{ {code} }})()")
-            output = str(result) if result else "done"
-        except Exception as e:
-            output = f"Error: {str(e)}"
-        finally:
-            await browser.close()
-    return output
-
-@tool
-async def capture_screenshot(url: str = "", full_page: bool = False) -> str:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.newPage()
-        try:
-            if url:
-                await page.goto(url, wait_until="networkidle")
-            screenshot_bytes = await page.screenshot(full_page=full_page, type="png")
-            b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
-            return f"data:image/png;base64,{b64}"
-        except Exception as e:
-            return f"Screenshot error: {str(e)}"
-        finally:
-            await browser.close()
-
-@tool
-def encode_image_file(filepath: str) -> str:
-    if not os.path.exists(filepath):
-        return f"File not found: {filepath}"
-    try:
-        with open(filepath, "rb") as f:
-            img_bytes = f.read()
-        ext = os.path.splitext(filepath)[1].lower()
-        fmt_map = {".jpg": "jpeg", ".jpeg": "jpeg", ".png": "png", ".webp": "webp", ".gif": "gif"}
-        fmt = fmt_map.get(ext, "png")
-        b64 = base64.b64encode(img_bytes).decode("utf-8")
-        return f"data:image/{fmt};base64,{b64}"
-    except Exception as e:
-        return f"Encode error: {str(e)}"
-
-@tool
-def run_bash(command: str) -> str:
-    try:
-        res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
-        return res.stdout + res.stderr
-    except Exception as e:
-        return str(e)
-
-@tool
-def run_python(code: str) -> str:
-    try:
-        res = subprocess.run(["python3", "-c", code], capture_output=True, text=True, timeout=60)
-        return res.stdout + res.stderr
-    except Exception as e:
-        return str(e)
-
-@tool
-def web_search(query: str, max_results: int = 5) -> str:
-    try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=max_results))
-        if not results:
-            return f"No results for: {query}"
-        output = []
-        for i, r in enumerate(results, 1):
-            output.append(f"{i}. {r['title']}\n   URL: {r['href']}\n   {r['body']}")
-        return "\n\n".join(output)
-    except Exception as e:
-        return f"Search error: {str(e)}"
-
-@tool
-def read_article(url: str, max_chars: int = 6000) -> str:
-    try:
-        reader_url = f"https://r.jina.ai/{url}"
-        headers = {"Accept": "text/markdown"}
-        resp = requests.get(reader_url, headers=headers, timeout=30)
-        if resp.status_code == 200:
-            content = resp.text
-            if len(content) > max_chars:
-                content = content[:max_chars] + f"\n\n... (truncated)"
-            return content
-        else:
-            return f"Failed to read (HTTP {resp.status_code})"
-    except Exception as e:
-        return f"Read error: {str(e)}"
-
-@tool
-def download_file(url: str, output_name: str = "") -> str:
-    try:
-        r = requests.get(url, timeout=30)
-        fname = output_name if output_name else url.split("/")[-1] or "downloaded"
-        with open(fname, "wb") as f:
-            f.write(r.content)
-        return f"Saved to {os.path.abspath(fname)}"
-    except Exception as e:
-        return str(e)
-
-@tool
-async def monitor_network_traffic(target_url: str, api_fragment: str, scroll: bool = False) -> str:
-    captured = []
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.newPage()
-        async def handle_response(response):
-            if api_fragment in response.url and response.status == 200:
-                try:
-                    body = await response.json()
-                    captured.append({"url": response.url, "data": body})
-                except:
-                    pass
-        page.on("response", handle_response)
-        await page.goto(target_url, wait_until="networkidle")
-        if scroll:
-            for _ in range(5):
-                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await page.wait_for_timeout(2000)
-        await browser.close()
-    if not captured:
-        return f"No API calls matching '{api_fragment}' found."
-    return json.dumps(captured[0], indent=2)[:4000]
-
-print("✅ All 9 tools ready.")
-
-# ============================================================
-# Build multi‑agent orchestrator
-# ============================================================
-from langchain_openai import ChatOpenAI
-from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
-
-llm = ChatOpenAI(
-    base_url="http://localhost:11434/v1",
-    api_key="ollama",
-    model=MODEL_NAME,
-    temperature=0,
-)
-
-research_llm = llm.bind_tools([web_search, read_article, download_file, run_playwright, capture_screenshot, encode_image_file, monitor_network_traffic])
-code_llm = llm.bind_tools([run_python, run_bash, run_playwright, download_file, capture_screenshot, encode_image_file, monitor_network_traffic])
-test_llm = llm.bind_tools([run_playwright, capture_screenshot, run_bash, run_python, encode_image_file])
-
-research_system = (
-    "You are a Vision‑enabled Research Agent. Search the web, read articles, take screenshots, "
-    "analyze images, and monitor network traffic to find hidden APIs. "
-    "Describe what you see in detail. Return factual findings; do not write final code."
-)
-def research_node(state):
-    messages = [SystemMessage(content=research_system)] + state["messages"]
-    return {"messages": [research_llm.invoke(messages)]}
-
-code_system = (
-    "You are a Vision‑enabled Code Agent. Write and execute Python/bash scripts. "
-    "Use `run_python` to execute any Python code, `run_bash` for shell commands. "
-    "You can take screenshots, analyze images, and monitor network traffic. "
-    "Return the final working code and summary."
-)
-def code_node(state):
-    messages = [SystemMessage(content=code_system)] + state["messages"]
-    return {"messages": [code_llm.invoke(messages)]}
-
-test_system = (
-    "You are a Vision‑enabled Test Agent. Validate outputs using Playwright and bash. "
-    "Use `run_python` to run test scripts. Take screenshots and visually inspect them. "
-    "Report findings with image evidence."
-)
-def test_node(state):
-    messages = [SystemMessage(content=test_system)] + state["messages"]
-    return {"messages": [test_llm.invoke(messages)]}
-
-class SupervisorDecision(BaseModel):
-    next_agent: Literal["research", "code", "test", "FINISH"] = Field(description="Next agent to call, or FINISH if done.")
-    reason: str = Field(description="Why this agent is being called.")
-
-supervisor_system = (
-    "You are the Vision‑enabled Orchestrator. You manage three agents: Research, Code, Test. "
-    "You can SEE images in the conversation. "
-    "Break complex tasks into sub‑tasks and delegate. Start with Research if info is needed, "
-    "then Code to build, then Test to validate. Iterate as needed. "
-    "When fully completed, respond with FINISH."
-)
-
-def supervisor_node(state):
-    messages = [SystemMessage(content=supervisor_system)] + state["messages"]
-    sup_llm = llm.bind_tools([SupervisorDecision])
-    return {"messages": [sup_llm.invoke(messages)]}
-
-def decide_next(state) -> str:
-    last_msg = state["messages"][-1]
-    if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
-        for tc in last_msg.tool_calls:
-            if tc["name"] == "SupervisorDecision":
-                decision = tc["args"].get("next_agent")
-                if decision in ["research", "code", "test"]:
-                    return decision
-                elif decision == "FINISH":
-                    return "finish"
-    return "finish"
-
-class AgentState(TypedDict):
-    messages: Annotated[List[Union[HumanMessage, AIMessage, SystemMessage, ToolMessage]], operator.add]
-
-workflow = StateGraph(AgentState)
-workflow.add_node("supervisor", supervisor_node)
-workflow.add_node("research", research_node)
-workflow.add_node("code", code_node)
-workflow.add_node("test", test_node)
-workflow.set_entry_point("supervisor")
-workflow.add_conditional_edges("supervisor", decide_next, {
-    "research": "research", "code": "code", "test": "test", "finish": END
-})
-workflow.add_edge("research", "supervisor")
-workflow.add_edge("code", "supervisor")
-workflow.add_edge("test", "supervisor")
-
-memory = MemorySaver()
-graph = workflow.compile(checkpointer=memory)
-
-# ============================================================
-# FastAPI app
-# ============================================================
-from fastapi import FastAPI, Request, UploadFile, File, Form
-from fastapi.responses import StreamingResponse
-
-app = FastAPI()
-
-@app.post("/chat")
-async def chat_endpoint(request: Request):
-    body = await request.json()
-    user_message = body.get("message", "")
-    images = body.get("images", [])
-    thread_id = body.get("thread_id", "default")
-    config = {"configurable": {"thread_id": thread_id}}
-    if images:
-        content_parts = [{"type": "text", "text": user_message}]
-        for img in images:
-            content_parts.append({"type": "image_url", "image_url": {"url": img}})
-        human_msg = HumanMessage(content=content_parts)
-    else:
-        human_msg = HumanMessage(content=user_message)
-
-    async def event_stream():
-        try:
-            inputs = {"messages": [human_msg]}
-            async for event in graph.astream(inputs, config, stream_mode="values"):
-                if "messages" in event:
-                    last_msg = event["messages"][-1]
-                    if isinstance(last_msg, AIMessage) and last_msg.content:
-                        yield f"data: {json.dumps({'type': 'agent_output', 'content': last_msg.content})}\n\n"
-                    elif isinstance(last_msg, ToolMessage):
-                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': last_msg.name, 'content': str(last_msg.content)[:300]})}\n\n"
-            final_state = await graph.ainvoke(inputs, config)
-            final_msg = final_state["messages"][-1]
-            final_output = final_msg.content if isinstance(final_msg, AIMessage) else "Task completed."
-            yield f"data: {json.dumps({'type': 'final', 'content': final_output})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-@app.post("/chat-with-image")
-async def chat_with_image(
-    message: str = Form(""),
-    image: UploadFile = File(None),
-    thread_id: str = Form("default")
-):
-    config = {"configurable": {"thread_id": thread_id}}
-    content_parts = [{"type": "text", "text": message}]
-    if image and image.filename:
-        img_bytes = await image.read()
-        b64 = base64.b64encode(img_bytes).decode("utf-8")
-        ext = os.path.splitext(image.filename)[1].lower()
-        fmt_map = {".jpg": "jpeg", ".jpeg": "jpeg", ".png": "png", ".webp": "webp"}
-        fmt = fmt_map.get(ext, "png")
-        data_uri = f"data:image/{fmt};base64,{b64}"
-        content_parts.append({"type": "image_url", "image_url": {"url": data_uri}})
-    human_msg = HumanMessage(content=content_parts if len(content_parts) > 1 else message)
-
-    async def event_stream():
-        try:
-            inputs = {"messages": [human_msg]}
-            async for event in graph.astream(inputs, config, stream_mode="values"):
-                if "messages" in event:
-                    last_msg = event["messages"][-1]
-                    if isinstance(last_msg, AIMessage) and last_msg.content:
-                        yield f"data: {json.dumps({'type': 'agent_output', 'content': last_msg.content})}\n\n"
-            final_state = await graph.ainvoke(inputs, config)
-            final_msg = final_state["messages"][-1]
-            final_output = final_msg.content if isinstance(final_msg, AIMessage) else "Task completed."
-            yield f"data: {json.dumps({'type': 'final', 'content': final_output})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-@app.get("/health")
-def health():
-    return {"status": "ok", "model": MODEL_NAME, "vision": True, "tools": 9, "agents": 4}
-
-# ============================================================
-# Cloudflare Tunnel (start and commit URL)
-# ============================================================
-def start_tunnel():
-    subprocess.run("wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /tmp/cloudflared", shell=True)
-    subprocess.run("chmod +x /tmp/cloudflared", shell=True)
-    proc = subprocess.Popen(["/tmp/cloudflared", "tunnel", "--url", "http://localhost:8000", "--no-autoupdate"],
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    url = None
-    for _ in range(60):
-        line = proc.stdout.readline()
-        if not line:
-            break
-        if "https://" in line and ".trycloudflare.com" in line:
-            import re
-            match = re.search(r'https://[-a-zA-Z0-9]+\.trycloudflare\.com', line)
-            if match:
-                url = match.group(0)
-                break
-        time.sleep(0.5)
-    return proc, url
-
-print("🌐 Starting Cloudflare Tunnel…")
-tunnel_proc, public_url = start_tunnel()
-if not public_url:
-    print("❌ Failed to get tunnel URL")
-    sys.exit(1)
-print(f"🔗 PUBLIC URL: {public_url}/chat")
-commit_to_github(public_url)
-
-# ============================================================
-# Run FastAPI server and keep kernel alive for 3 hours
-# ============================================================
-import uvicorn
-def run_server():
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="error")
-threading.Thread(target=run_server, daemon=True).start()
-
-print("✅ All services running. Kernel will stay alive for 3 hours.")
-time.sleep(10800)   # 3 hours
-print("⏰ 3 hours elapsed. Shutting down.")
-EOF
+          echo "----- staging/ -----"
+          ls -la staging
+          echo "----- metadata -----"
+          cat staging/kernel-metadata.json
+          echo "----- script head -----"
+          head -n 25 staging/script.py
 
       - name: Push kernel to Kaggle
         run: |
-          cd kaggle-kernel
+          cd staging
           kaggle kernels push -p .
 
-      - name: Keep runner alive for 3 hours (optional – kernel already sleeps)
-        run: sleep 10800
+      - name: Sleep to keep workflow alive (3h)
+        run: |
+          echo "💤 Kernel pushed. Sleeping 10800s (3h) to keep the workflow alive while the kernel runs."
+          sleep 10800
+          echo "⏰ 3h sleep finished."
+          
