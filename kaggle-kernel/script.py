@@ -298,12 +298,6 @@ research_system = (
     "Describe what you see in detail. Return factual findings; do not write final code."
 )
 
-
-def research_node(state):
-    messages = [SystemMessage(content=research_system)] + state["messages"]
-    return {"messages": [research_llm.invoke(messages)]}
-
-
 code_system = (
     "You are a Vision-enabled Code Agent. Write and execute Python/bash scripts. "
     "Use run_python to execute any Python code, run_bash for shell commands. "
@@ -311,22 +305,103 @@ code_system = (
     "Return the final working code and summary."
 )
 
-
-def code_node(state):
-    messages = [SystemMessage(content=code_system)] + state["messages"]
-    return {"messages": [code_llm.invoke(messages)]}
-
-
 test_system = (
     "You are a Vision-enabled Test Agent. Validate outputs using Playwright and bash. "
     "Use run_python to run test scripts. Take screenshots and visually inspect them. "
     "Report findings with image evidence."
 )
 
+TOOL_REGISTRY = {
+    tool.name: tool
+    for tool in [
+        run_playwright,
+        capture_screenshot,
+        encode_image_file,
+        run_bash,
+        run_python,
+        web_search,
+        read_article,
+        download_file,
+        monitor_network_traffic,
+    ]
+}
+MAX_AGENT_TOOL_ROUNDS = 8
 
-def test_node(state):
-    messages = [SystemMessage(content=test_system)] + state["messages"]
-    return {"messages": [test_llm.invoke(messages)]}
+
+def _coerce_text_content(content) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                if item.get("type") == "text":
+                    parts.append(str(item.get("text", "")))
+                elif "text" in item:
+                    parts.append(str(item.get("text", "")))
+                else:
+                    parts.append(json.dumps(item))
+            else:
+                parts.append(str(item))
+        return "\n".join(part for part in parts if part)
+    return str(content)
+
+
+async def _execute_tool_call(tool_call: dict) -> ToolMessage:
+    tool_name = tool_call["name"]
+    tool_obj = TOOL_REGISTRY.get(tool_name)
+    try:
+        if tool_obj is None:
+            result = f"Tool not found: {tool_name}"
+        else:
+            result = await tool_obj.ainvoke(tool_call.get("args", {}))
+            if result is None or result == "":
+                result = "done"
+    except Exception as e:
+        result = f"Tool error: {str(e)}"
+    return ToolMessage(
+        content=_coerce_text_content(result),
+        tool_call_id=tool_call["id"],
+        name=tool_name,
+    )
+
+
+async def _run_agent_with_tools(agent_llm, system_prompt: str, state):
+    messages = [SystemMessage(content=system_prompt)] + state["messages"]
+    emitted_messages = []
+
+    for _ in range(MAX_AGENT_TOOL_ROUNDS):
+        ai_msg = await agent_llm.ainvoke(messages)
+        emitted_messages.append(ai_msg)
+        messages.append(ai_msg)
+
+        tool_calls = getattr(ai_msg, "tool_calls", None) or []
+        if not tool_calls:
+            return {"messages": emitted_messages}
+
+        for tool_call in tool_calls:
+            tool_msg = await _execute_tool_call(tool_call)
+            emitted_messages.append(tool_msg)
+            messages.append(tool_msg)
+
+    emitted_messages.append(
+        AIMessage(content="Agent stopped after reaching the tool-call limit without producing a final text response.")
+    )
+    return {"messages": emitted_messages}
+
+
+async def research_node(state):
+    return await _run_agent_with_tools(research_llm, research_system, state)
+
+
+async def code_node(state):
+    return await _run_agent_with_tools(code_llm, code_system, state)
+
+
+async def test_node(state):
+    return await _run_agent_with_tools(test_llm, test_system, state)
 
 
 def synthesis_node(state):
@@ -440,18 +515,22 @@ async def chat_endpoint(request: Request):
         human_msg = HumanMessage(content=user_message)
 
     async def event_stream():
+        final_output = ""
         try:
             inputs = {"messages": [human_msg]}
             async for event in graph.astream(inputs, config, stream_mode="values"):
-                if "messages" in event:
-                    last_msg = event["messages"][-1]
-                    if isinstance(last_msg, AIMessage) and last_msg.content:
-                        yield f"data: {json.dumps({'type': 'agent_output', 'content': last_msg.content})}\n\n"
-                    elif isinstance(last_msg, ToolMessage):
-                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': last_msg.name, 'content': str(last_msg.content)[:300]})}\n\n"
-            final_state = await graph.ainvoke(inputs, config)
-            final_msg = final_state["messages"][-1]
-            final_output = final_msg.content if isinstance(final_msg, AIMessage) else "Task completed."
+                if "messages" not in event:
+                    continue
+                last_msg = event["messages"][-1]
+                if isinstance(last_msg, AIMessage):
+                    text = _coerce_text_content(last_msg.content).strip()
+                    if text:
+                        final_output = text
+                        yield f"data: {json.dumps({'type': 'agent_output', 'content': text})}\n\n"
+                elif isinstance(last_msg, ToolMessage):
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': last_msg.name, 'content': _coerce_text_content(last_msg.content)[:300]})}\n\n"
+            if not final_output:
+                final_output = "Agent completed, but no text response was generated."
             yield f"data: {json.dumps({'type': 'final', 'content': final_output})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -478,16 +557,22 @@ async def chat_with_image(
     human_msg = HumanMessage(content=content_parts if len(content_parts) > 1 else message)
 
     async def event_stream():
+        final_output = ""
         try:
             inputs = {"messages": [human_msg]}
             async for event in graph.astream(inputs, config, stream_mode="values"):
-                if "messages" in event:
-                    last_msg = event["messages"][-1]
-                    if isinstance(last_msg, AIMessage) and last_msg.content:
-                        yield f"data: {json.dumps({'type': 'agent_output', 'content': last_msg.content})}\n\n"
-            final_state = await graph.ainvoke(inputs, config)
-            final_msg = final_state["messages"][-1]
-            final_output = final_msg.content if isinstance(final_msg, AIMessage) else "Task completed."
+                if "messages" not in event:
+                    continue
+                last_msg = event["messages"][-1]
+                if isinstance(last_msg, AIMessage):
+                    text = _coerce_text_content(last_msg.content).strip()
+                    if text:
+                        final_output = text
+                        yield f"data: {json.dumps({'type': 'agent_output', 'content': text})}\n\n"
+                elif isinstance(last_msg, ToolMessage):
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': last_msg.name, 'content': _coerce_text_content(last_msg.content)[:300]})}\n\n"
+            if not final_output:
+                final_output = "Agent completed, but no text response was generated."
             yield f"data: {json.dumps({'type': 'final', 'content': final_output})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
