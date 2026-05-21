@@ -80,7 +80,7 @@ print("📦 Installing dependencies…", flush=True)
 os.system(
     "pip install -q --no-warn-script-location "
     "fastapi uvicorn requests pydantic typing_extensions "
-    "langchain langchain-core langchain-openai "
+    "langchain langchain-core langchain-openai langgraph "
     "duckduckgo-search playwright"
 )
 os.system("playwright install --with-deps chromium > /dev/null 2>&1")
@@ -264,12 +264,11 @@ async def monitor_network_traffic(target_url: str, api_fragment: str, scroll: bo
 print("✅ All 9 tools ready.", flush=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 4 — Simple tool-using agent (replaces multi-agent orchestrator)
+# PHASE 4 — Simple ReAct agent (replaces multi-agent orchestrator)
 # ═══════════════════════════════════════════════════════════════════════════════
 from langchain_openai import ChatOpenAI  # noqa: E402
+from langgraph.prebuilt import create_react_agent  # noqa: E402
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage  # noqa: E402
-from langchain.agents import AgentExecutor, create_openai_tools_agent  # noqa: E402
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder  # noqa: E402
 
 llm = ChatOpenAI(
     base_url="http://localhost:11434/v1",
@@ -297,15 +296,7 @@ SYSTEM_PROMPT = (
     "the user's request. Always reply with a friendly, complete answer in natural language."
 )
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", SYSTEM_PROMPT),
-    MessagesPlaceholder(variable_name="chat_history", optional=True),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad"),
-])
-
-agent = create_openai_tools_agent(llm, tools, prompt)
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+agent_executor = create_react_agent(llm, tools, prompt=SYSTEM_PROMPT)
 
 
 def _coerce_text_content(content) -> str:
@@ -322,7 +313,8 @@ def _coerce_text_content(content) -> str:
                 elif "text" in item:
                     parts.append(str(item.get("text", "")))
                 else:
-                    parts.append(json.dumps(item))
+                    import json as _json
+                    parts.append(_json.dumps(item))
             else:
                 parts.append(str(item))
         return "\n".join(part for part in parts if part)
@@ -344,7 +336,6 @@ async def chat_endpoint(request: Request):
     images = body.get("images", [])
     thread_id = body.get("thread_id", "default")   # kept for compatibility
 
-    # Build input string (with optional image URLs appended for vision)
     if images:
         image_refs = " ".join(f"[image: {img}]" for img in images)
         input_text = f"{user_message}\n{image_refs}"
@@ -353,11 +344,16 @@ async def chat_endpoint(request: Request):
 
     async def event_stream():
         try:
-            result = await agent_executor.ainvoke({
-                "input": input_text,
-                "chat_history": [],
-            })
-            output = result.get("output", "I'm sorry, I couldn't process that.")
+            result = await agent_executor.ainvoke({"messages": [HumanMessage(content=input_text)]})
+            msgs = result.get("messages", [])
+            output = ""
+            for m in reversed(msgs):
+                if isinstance(m, AIMessage):
+                    output = _coerce_text_content(m.content).strip()
+                    if output:
+                        break
+            if not output:
+                output = "I'm sorry, I couldn't process that."
             yield f"data: {json.dumps({'type': 'final', 'content': output})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'final', 'content': f'Error: {str(e)}'})}\n\n"
@@ -383,11 +379,16 @@ async def chat_with_image(
 
     async def event_stream():
         try:
-            result = await agent_executor.ainvoke({
-                "input": input_text,
-                "chat_history": [],
-            })
-            output = result.get("output", "I'm sorry, I couldn't process that.")
+            result = await agent_executor.ainvoke({"messages": [HumanMessage(content=input_text)]})
+            msgs = result.get("messages", [])
+            output = ""
+            for m in reversed(msgs):
+                if isinstance(m, AIMessage):
+                    output = _coerce_text_content(m.content).strip()
+                    if output:
+                        break
+            if not output:
+                output = "I'm sorry, I couldn't process that."
             yield f"data: {json.dumps({'type': 'final', 'content': output})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'final', 'content': f'Error: {str(e)}'})}\n\n"
@@ -503,3 +504,4 @@ threading.Thread(target=run_server, daemon=True).start()
 print("✅ All services running. Kernel will stay alive for 3 hours.", flush=True)
 time.sleep(10800)  # 3 hours
 print("⏰ 3 hours elapsed. Shutting down.", flush=True)
+    
