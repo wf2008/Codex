@@ -101,9 +101,14 @@ async def run_playwright(code: str) -> str:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
         try:
-            result = await eval(f"async def __f__():
- {code.replace(chr(10), chr(10) + ' ')}
-return await __f__()")
+            func_src = "async def __f__():
+"
+            for line in code.splitlines():
+                func_src += f"    {line}
+"
+            ns = {"p": p, "browser": browser, "page": page}
+            exec(func_src, ns, ns)
+            result = await ns["__f__"]()
             return str(result) if result else "done"
         except Exception as e:
             return f"Error: {str(e)}"
