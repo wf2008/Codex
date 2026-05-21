@@ -1,9 +1,3 @@
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  VISION MULTI-AGENT + CLOUDFLARE TUNNEL + TOOLS                              ║
-# ║  Model: huihui_ai/qwen3-vl-abliterated:8b-instruct (vision + tool calling)   ║
-# ║  This script commits the tunnel URL directly to GitHub                       ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
-
 import os
 import sys
 import subprocess
@@ -17,16 +11,18 @@ from typing import TypedDict, List, Literal, Union
 from typing_extensions import Annotated
 import operator
 
-# These are injected by the GitHub Actions runner via sed before push.
-MODEL_NAME = "huihui_ai/qwen3-vl-abliterated:8b-instruct"
-GITHUB_TOKEN = "__GITHUB_TOKEN__"
-REPO = "__REPO__"
-FILE_PATH = "frontend/ollama_url.txt"
-# ── Kaggle token setup (robust) ───────────────────────────────────────────────
-def _resolve_kaggle_credentials() -> dict | None:
-    username = os.environ.get("KAGGLE_USERNAME", "").strip()
-    key = os.environ.get("KAGGLE_KEY", "").strip()
-    token = os.environ.get("KAGGLE_API_TOKEN", "").strip()
+TITLE = "script_FIXED.py"
+
+MODELNAME = os.environ.get("MODELNAME", "huihui_ai/qwen3-vl-abliterated:8b-instruct")
+GITHUBTOKEN = os.environ.get("GITHUBTOKEN", "")
+REPO = os.environ.get("REPO", "wf2008/Codex")
+FILEPATH = os.environ.get("FILEPATH", "frontend/ollama-url.txt")
+
+
+def resolve_kaggle_credentials() -> dict | None:
+    username = os.environ.get("KAGGLEUSERNAME", "").strip()
+    key = os.environ.get("KAGGLEKEY", "").strip()
+    token = os.environ.get("KAGGLEAPITOKEN", "").strip()
 
     if username and key:
         return {"username": username, "key": key}
@@ -34,9 +30,8 @@ def _resolve_kaggle_credentials() -> dict | None:
     if not token:
         return None
 
-    token = token.strip().strip("'\"")
+    token = token.strip()
 
-    # Common case: full kaggle.json pasted into the secret.
     try:
         data = json.loads(token)
         if isinstance(data, dict) and data.get("username") and data.get("key"):
@@ -44,74 +39,56 @@ def _resolve_kaggle_credentials() -> dict | None:
     except json.JSONDecodeError:
         pass
 
-    # Also support base64-encoded kaggle.json content.
     try:
-        decoded = base64.b64decode(token + "===", validate=False).decode("utf-8").strip()
+        decoded = base64.b64decode(token, validate=False).decode("utf-8").strip()
         data = json.loads(decoded)
         if isinstance(data, dict) and data.get("username") and data.get("key"):
             return {"username": str(data["username"]).strip(), "key": str(data["key"]).strip()}
     except Exception:
         pass
 
-    # If the token is just the raw Kaggle key, combine it with KAGGLE_USERNAME.
     if username:
         return {"username": username, "key": token}
 
     print(
-        "::error::Could not build kaggle.json from secrets. Provide KAGGLE_USERNAME + KAGGLE_KEY, "
-        "or set KAGGLE_API_TOKEN to the full kaggle.json JSON (or its base64 form).",
+        "error Could not build kaggle.json from secrets. Provide KAGGLEUSERNAME and KAGGLEKEY, "
+        "or set KAGGLEAPITOKEN to the full kaggle.json JSON or its base64 form.",
         flush=True,
     )
     sys.exit(1)
 
 
-kaggle_data = _resolve_kaggle_credentials()
-if kaggle_data:
-    kaggle_dir = os.path.expanduser("~/.kaggle")
-    os.makedirs(kaggle_dir, exist_ok=True)
-    kaggle_path = os.path.join(kaggle_dir, "kaggle.json")
-    with open(kaggle_path, "w") as f:
-        json.dump(kaggle_data, f)
-    os.chmod(kaggle_path, 0o600)
+kaggledata = resolve_kaggle_credentials()
+if kaggledata:
+    kaggledir = os.path.expanduser("~/.kaggle")
+    os.makedirs(kaggledir, exist_ok=True)
+    kagglepath = os.path.join(kaggledir, "kaggle.json")
+    with open(kagglepath, "w") as f:
+        json.dump(kaggledata, f)
+    os.chmod(kagglepath, 0o600)
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 1 — Install dependencies
-# ═══════════════════════════════════════════════════════════════════════════════
-print("📦 Installing dependencies…", flush=True)
-os.system(
-    "pip install -q --no-warn-script-location "
-    "fastapi uvicorn requests pydantic typing_extensions "
-    "langchain langchain-core langchain-openai langgraph "
-    "duckduckgo-search playwright"
-)
+print("Installing dependencies", flush=True)
+os.system("pip install -q --no-warn-script-location fastapi uvicorn requests pydantic typing_extensions langchain langchain-core langchain-openai langgraph duckduckgo-search playwright")
 os.system("playwright install --with-deps chromium > /dev/null 2>&1")
 os.system("curl -fsSL https://ollama.com/install.sh | sh > /dev/null 2>&1")
 
 import requests  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 2 — Start Ollama & pull model
-# ═══════════════════════════════════════════════════════════════════════════════
-print("🚀 Starting Ollama server…", flush=True)
-
+print("Starting Ollama server", flush=True)
 
 def start_ollama():
-    os.system("ollama serve > /tmp/ollama.log 2>&1")
-
+    os.system("ollama serve > tmp_ollama.log 2>&1")
 
 threading.Thread(target=start_ollama, daemon=True).start()
 time.sleep(5)
 
-print(f"⬇️  Pulling vision model: {MODEL_NAME}…", flush=True)
-os.system(f"ollama pull {MODEL_NAME}")
-print(f"✅ Model {MODEL_NAME} ready!", flush=True)
+print(f"Pulling vision model {MODELNAME}", flush=True)
+os.system(f"ollama pull {MODELNAME}")
+print(f"Model {MODELNAME} ready!", flush=True)
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 3 — Define all 9 tools
-# ═══════════════════════════════════════════════════════════════════════════════
-print("🧠 Creating tools (9 total)…", flush=True)
+print("Creating tools 9 total", flush=True)
+
 from langchain_core.tools import tool  # noqa: E402
 from playwright.async_api import async_playwright  # noqa: E402
 from duckduckgo_search import DDGS  # noqa: E402
@@ -124,18 +101,18 @@ async def run_playwright(code: str) -> str:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
         try:
-            # NOTE: eval kept for parity with original. Sandbox only.
-            result = await eval(f"(async () => {{ {code} }})()")
-            output = str(result) if result else "done"
+            result = await eval(f"async def __f__():
+ {code.replace(chr(10), chr(10) + ' ')}
+return await __f__()")
+            return str(result) if result else "done"
         except Exception as e:
-            output = f"Error: {str(e)}"
+            return f"Error: {str(e)}"
         finally:
             await browser.close()
-    return output
 
 
 @tool
-async def capture_screenshot(url: str = "", full_page: bool = False) -> str:
+async def capture_screenshot(url: str, full_page: bool = False) -> str:
     """Capture a PNG screenshot of a URL and return it as a data URI."""
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -161,8 +138,8 @@ def encode_image_file(filepath: str) -> str:
         with open(filepath, "rb") as f:
             img_bytes = f.read()
         ext = os.path.splitext(filepath)[1].lower()
-        fmt_map = {".jpg": "jpeg", ".jpeg": "jpeg", ".png": "png", ".webp": "webp", ".gif": "gif"}
-        fmt = fmt_map.get(ext, "png")
+        fmtmap = {".jpg": "jpeg", ".jpeg": "jpeg", ".png": "png", ".webp": "webp", ".gif": "gif"}
+        fmt = fmtmap.get(ext, "png")
         b64 = base64.b64encode(img_bytes).decode("utf-8")
         return f"data:image/{fmt};base64,{b64}"
     except Exception as e:
@@ -171,10 +148,10 @@ def encode_image_file(filepath: str) -> str:
 
 @tool
 def run_bash(command: str) -> str:
-    """Run a shell command and return combined stdout+stderr."""
+    """Run a shell command and return combined stdout/stderr."""
     try:
         res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
-        return res.stdout + res.stderr
+        return (res.stdout or "") + (res.stderr or "")
     except Exception as e:
         return str(e)
 
@@ -184,7 +161,7 @@ def run_python(code: str) -> str:
     """Run Python code in a subprocess."""
     try:
         res = subprocess.run(["python3", "-c", code], capture_output=True, text=True, timeout=60)
-        return res.stdout + res.stderr
+        return (res.stdout or "") + (res.stderr or "")
     except Exception as e:
         return str(e)
 
@@ -196,11 +173,12 @@ def web_search(query: str, max_results: int = 5) -> str:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
         if not results:
-            return f"No results for: {query}"
+            return f"No results for {query}"
         output = []
         for i, r in enumerate(results, 1):
-            output.append(f"{i}. {r['title']}\n   URL: {r['href']}\n   {r['body']}")
-        return "\n\n".join(output)
+            output.append(f"{i}. {r.get('title', '')} URL {r.get('href', '')} {r.get('body', '')}")
+        return "
+".join(output)
     except Exception as e:
         return f"Search error: {str(e)}"
 
@@ -209,15 +187,13 @@ def web_search(query: str, max_results: int = 5) -> str:
 def read_article(url: str, max_chars: int = 6000) -> str:
     """Fetch the readable content of a URL via r.jina.ai."""
     try:
-        reader_url = f"https://r.jina.ai/{url}"
+        reader_url = f"https://r.jina.ai/http://{url.replace('http://', '').replace('https://', '')}"
         headers = {"Accept": "text/markdown"}
         resp = requests.get(reader_url, headers=headers, timeout=30)
         if resp.status_code == 200:
             content = resp.text
-            if len(content) > max_chars:
-                content = content[:max_chars] + "\n\n... (truncated)"
-            return content
-        return f"Failed to read (HTTP {resp.status_code})"
+            return content[:max_chars]
+        return f"Failed to read: HTTP {resp.status_code}"
     except Exception as e:
         return f"Read error: {str(e)}"
 
@@ -227,7 +203,7 @@ def download_file(url: str, output_name: str = "") -> str:
     """Download a URL to disk."""
     try:
         r = requests.get(url, timeout=30)
-        fname = output_name if output_name else url.split("/")[-1] or "downloaded"
+        fname = output_name if output_name else url.split("/")[-1] or "downloaded.file"
         with open(fname, "wb") as f:
             f.write(r.content)
         return f"Saved to {os.path.abspath(fname)}"
@@ -258,257 +234,55 @@ async def monitor_network_traffic(target_url: str, api_fragment: str, scroll: bo
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 await page.wait_for_timeout(2000)
         await browser.close()
-    if not captured:
-        return f"No API calls matching '{api_fragment}' found."
-    return json.dumps(captured[0], indent=2)[:4000]
+        if not captured:
+            return f"No API calls matching {api_fragment} found."
+        return json.dumps(captured[0], indent=2)[:4000]
 
 
-print("✅ All 9 tools ready.", flush=True)
+print("All 9 tools ready.", flush=True)
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 4 — Build the multi-agent orchestrator
-# ═══════════════════════════════════════════════════════════════════════════════
 from langchain_openai import ChatOpenAI  # noqa: E402
-from langgraph.graph import StateGraph, END  # noqa: E402
-from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage  # noqa: E402
+from langchain.agents import AgentExecutor, create_openai_tools_agent  # noqa: E402
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder  # noqa: E402
+from langchain_core.messages import HumanMessage  # noqa: E402
 
 llm = ChatOpenAI(
     base_url="http://localhost:11434/v1",
     api_key="ollama",
-    model=MODEL_NAME,
+    model=MODELNAME,
     temperature=0,
 )
 
-research_llm = llm.bind_tools(
-    [web_search, read_article, download_file, run_playwright,
-     capture_screenshot, encode_image_file, monitor_network_traffic]
-)
-code_llm = llm.bind_tools(
-    [run_python, run_bash, run_playwright, download_file,
-     capture_screenshot, encode_image_file, monitor_network_traffic]
-)
-test_llm = llm.bind_tools(
-    [run_playwright, capture_screenshot, run_bash, run_python, encode_image_file]
+tools = [
+    run_playwright,
+    capture_screenshot,
+    encode_image_file,
+    run_bash,
+    run_python,
+    web_search,
+    read_article,
+    download_file,
+    monitor_network_traffic,
+]
+
+SYSTEM_PROMPT = (
+    "You are a helpful AI assistant. You can answer directly and use tools when necessary. "
+    "Use tools only when they are required to fulfill the user's request. "
+    "Always reply with a friendly, complete answer in natural language."
 )
 
-research_system = (
-    "You are a Vision-enabled Research Agent. Search the web, read articles, take screenshots, "
-    "analyze images, and monitor network traffic to find hidden APIs. "
-    "Describe what you see in detail. Return factual findings; do not write final code."
-)
-
-code_system = (
-    "You are a Vision-enabled Code Agent. Write and execute Python/bash scripts. "
-    "Use run_python to execute any Python code, run_bash for shell commands. "
-    "You can take screenshots, analyze images, and monitor network traffic. "
-    "Return the final working code and summary."
-)
-
-test_system = (
-    "You are a Vision-enabled Test Agent. Validate outputs using Playwright and bash. "
-    "Use run_python to run test scripts. Take screenshots and visually inspect them. "
-    "Report findings with image evidence."
-)
-
-TOOL_REGISTRY = {
-    tool.name: tool
-    for tool in [
-        run_playwright,
-        capture_screenshot,
-        encode_image_file,
-        run_bash,
-        run_python,
-        web_search,
-        read_article,
-        download_file,
-        monitor_network_traffic,
+prompt = ChatPromptTemplate.from_messages(
+    [
+        ("system", SYSTEM_PROMPT),
+        MessagesPlaceholder(variable_name="chat_history", optional=True),
+        ("human", "{input}"),
+        MessagesPlaceholder(variable_name="agent_scratchpad"),
     ]
-}
-MAX_AGENT_TOOL_ROUNDS = 8
-
-
-def _coerce_text_content(content) -> str:
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict):
-                if item.get("type") == "text":
-                    parts.append(str(item.get("text", "")))
-                elif "text" in item:
-                    parts.append(str(item.get("text", "")))
-                else:
-                    parts.append(json.dumps(item))
-            else:
-                parts.append(str(item))
-        return "\n".join(part for part in parts if part)
-    return str(content)
-
-
-async def _execute_tool_call(tool_call: dict) -> ToolMessage:
-    tool_name = tool_call["name"]
-    tool_obj = TOOL_REGISTRY.get(tool_name)
-    try:
-        if tool_obj is None:
-            result = f"Tool not found: {tool_name}"
-        else:
-            result = await tool_obj.ainvoke(tool_call.get("args", {}))
-            if result is None or result == "":
-                result = "done"
-    except Exception as e:
-        result = f"Tool error: {str(e)}"
-    return ToolMessage(
-        content=_coerce_text_content(result),
-        tool_call_id=tool_call["id"],
-        name=tool_name,
-    )
-
-
-async def _run_agent_with_tools(agent_llm, system_prompt: str, state):
-    messages = [SystemMessage(content=system_prompt)] + state["messages"]
-    emitted_messages = []
-
-    for _ in range(MAX_AGENT_TOOL_ROUNDS):
-        ai_msg = await agent_llm.ainvoke(messages)
-        emitted_messages.append(ai_msg)
-        messages.append(ai_msg)
-
-        tool_calls = getattr(ai_msg, "tool_calls", None) or []
-        if not tool_calls:
-            return {"messages": emitted_messages}
-
-        for tool_call in tool_calls:
-            tool_msg = await _execute_tool_call(tool_call)
-            emitted_messages.append(tool_msg)
-            messages.append(tool_msg)
-
-    emitted_messages.append(
-        AIMessage(content="Agent stopped after reaching the tool-call limit without producing a final text response.")
-    )
-    return {"messages": emitted_messages}
-
-
-async def research_node(state):
-    return await _run_agent_with_tools(research_llm, research_system, state)
-
-
-async def code_node(state):
-    return await _run_agent_with_tools(code_llm, code_system, state)
-
-
-async def test_node(state):
-    return await _run_agent_with_tools(test_llm, test_system, state)
-
-
-async def synthesis_node(state):
-    """Generate final user-facing response after all agent work is complete."""
-    print("🎯 SYNTHESIS NODE CALLED - Generating final response...", flush=True)
-    history = state["messages"]
-    prompt = SystemMessage(content=(
-        "You are the final summarizer. Based on the entire conversation history above, "
-        "write a clear, helpful answer to the user's original request. "
-        "Synthesize results from research, code execution, and tests into a coherent response. "
-        "Do NOT call any tools - just provide the final answer in plain text."
-    ))
-    synthesis_llm = ChatOpenAI(
-        base_url="http://localhost:11434/v1",
-        api_key="ollama",
-        model=MODEL_NAME,
-        temperature=0.3,  # Slightly higher temp for more natural responses
-    )
-    # Use ainvoke for proper async execution
-    response = await synthesis_llm.ainvoke([prompt] + history)
-    print(f"✅ Synthesis generated: {str(response.content)[:100]}...", flush=True)
-    return {"messages": [response]}
-
-
-class SupervisorDecision(BaseModel):
-    next_agent: Literal["research", "code", "test", "synthesis", "FINISH"] = Field(
-        description="Next agent: 'research', 'code', 'test', 'synthesis', or 'FINISH' if final summary already generated."
-    )
-    reason: str = Field(description="Why this agent is being called.")
-
-
-supervisor_system = (
-    "You are the Vision-enabled Orchestrator managing a multi-agent workflow. "
-    "You control three worker agents (Research, Code, Test) and a Synthesis agent. "
-    "\n\nWORKFLOW RULES:"
-    "\n1. Break tasks into sub-tasks and delegate to appropriate agents"
-    "\n2. Research Agent: Use when information gathering or web searches are needed"
-    "\n3. Code Agent: Use to write/execute Python/bash scripts"
-    "\n4. Test Agent: Use to validate outputs and run tests"
-    "\n5. Synthesis Agent: ALWAYS call this to generate the final user-facing answer"
-    "\n6. FINISH: Only call after synthesis has generated the final response"
-    "\n\nCRITICAL: Before calling FINISH, you MUST route to 'synthesis' to generate "
-    "a clear final answer for the user. Never end with FINISH directly after worker agents."
 )
 
+agent = create_openai_tools_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 
-async def supervisor_node(state):
-    """Supervisor decides which agent to call next."""
-    messages = [SystemMessage(content=supervisor_system)] + state["messages"]
-    sup_llm = llm.bind_tools([SupervisorDecision])
-    response = await sup_llm.ainvoke(messages)
-    return {"messages": [response]}
-
-
-def decide_next(state) -> str:
-    """Route to the next agent based on supervisor's decision."""
-    last_msg = state["messages"][-1]
-    if isinstance(last_msg, AIMessage) and last_msg.tool_calls:
-        for tc in last_msg.tool_calls:
-            if tc["name"] == "SupervisorDecision":
-                decision = tc["args"].get("next_agent")
-                reason = tc["args"].get("reason", "")
-                print(f"🔀 Supervisor routing to: {decision} | Reason: {reason}", flush=True)
-                if decision in ["research", "code", "test", "synthesis"]:
-                    return decision
-                elif decision == "FINISH":
-                    print("🏁 Workflow ending via FINISH", flush=True)
-                    return "finish"
-    print("⚠️ No valid decision found, defaulting to finish", flush=True)
-    return "finish"
-
-
-class AgentState(TypedDict):
-    messages: Annotated[
-        List[Union[HumanMessage, AIMessage, SystemMessage, ToolMessage]],
-        operator.add,
-    ]
-
-
-workflow = StateGraph(AgentState)
-workflow.add_node("supervisor", supervisor_node)
-workflow.add_node("research", research_node)
-workflow.add_node("code", code_node)
-workflow.add_node("test", test_node)
-workflow.add_node("synthesis", synthesis_node)
-workflow.set_entry_point("supervisor")
-workflow.add_conditional_edges(
-    "supervisor", decide_next,
-    {
-        "research": "research",
-        "code": "code",
-        "test": "test",
-        "synthesis": "synthesis",
-        "finish": END,
-    },
-)
-workflow.add_edge("research", "supervisor")
-workflow.add_edge("code", "supervisor")
-workflow.add_edge("test", "supervisor")
-workflow.add_edge("synthesis", END)
-
-memory = MemorySaver()
-graph = workflow.compile(checkpointer=memory)
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 5 — FastAPI app
-# ═══════════════════════════════════════════════════════════════════════════════
 from fastapi import FastAPI, Request, UploadFile, File, Form  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
 
@@ -519,95 +293,53 @@ app = FastAPI()
 async def chat_endpoint(request: Request):
     body = await request.json()
     user_message = body.get("message", "")
-    images = body.get("images", [])
-    thread_id = body.get("thread_id", "default")
-    config = {"configurable": {"thread_id": thread_id}}
-    if images:
-        content_parts = [{"type": "text", "text": user_message}]
-        for img in images:
-            content_parts.append({"type": "image_url", "image_url": {"url": img}})
-        human_msg = HumanMessage(content=content_parts)
-    else:
-        human_msg = HumanMessage(content=user_message)
+    body.get("images", [])
+    body.get("thread_id", "default")
 
     async def event_stream():
-        final_output = ""
         try:
-            inputs = {"messages": [human_msg]}
-            async for event in graph.astream(inputs, config, stream_mode="values"):
-                if "messages" not in event:
-                    continue
-                last_msg = event["messages"][-1]
-                if isinstance(last_msg, AIMessage):
-                    text = _coerce_text_content(last_msg.content).strip()
-                    if text:
-                        final_output = text
-                        yield f"data: {json.dumps({'type': 'agent_output', 'content': text})}\n\n"
-                elif isinstance(last_msg, ToolMessage):
-                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': last_msg.name, 'content': _coerce_text_content(last_msg.content)[:300]})}\n\n"
-            if not final_output:
-                final_output = "Agent completed, but no text response was generated."
-            yield f"data: {json.dumps({'type': 'final', 'content': final_output})}\n\n"
+            result = await agent_executor.ainvoke({"input": user_message, "chat_history": []})
+            output = result.get("output", "I'm sorry, I couldn't process that.")
+            yield f"data: {json.dumps({'type': 'final', 'content': output})}
+
+"
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'final', 'content': f'Error: {str(e)}'})}
+
+"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.post("/chat-with-image")
-async def chat_with_image(
-    message: str = Form(""),
-    image: UploadFile = File(None),
-    thread_id: str = Form("default"),
-):
-    config = {"configurable": {"thread_id": thread_id}}
-    content_parts = [{"type": "text", "text": message}]
-    if image and image.filename:
-        img_bytes = await image.read()
-        b64 = base64.b64encode(img_bytes).decode("utf-8")
-        ext = os.path.splitext(image.filename)[1].lower()
-        fmt_map = {".jpg": "jpeg", ".jpeg": "jpeg", ".png": "png", ".webp": "webp"}
-        fmt = fmt_map.get(ext, "png")
-        data_uri = f"data:image/{fmt};base64,{b64}"
-        content_parts.append({"type": "image_url", "image_url": {"url": data_uri}})
-    human_msg = HumanMessage(content=content_parts if len(content_parts) > 1 else message)
-
+async def chat_with_image(message: str = Form(...), image: UploadFile = File(None), thread_id: str = Form("default")):
     async def event_stream():
-        final_output = ""
         try:
-            inputs = {"messages": [human_msg]}
-            async for event in graph.astream(inputs, config, stream_mode="values"):
-                if "messages" not in event:
-                    continue
-                last_msg = event["messages"][-1]
-                if isinstance(last_msg, AIMessage):
-                    text = _coerce_text_content(last_msg.content).strip()
-                    if text:
-                        final_output = text
-                        yield f"data: {json.dumps({'type': 'agent_output', 'content': text})}\n\n"
-                elif isinstance(last_msg, ToolMessage):
-                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': last_msg.name, 'content': _coerce_text_content(last_msg.content)[:300]})}\n\n"
-            if not final_output:
-                final_output = "Agent completed, but no text response was generated."
-            yield f"data: {json.dumps({'type': 'final', 'content': final_output})}\n\n"
+            result = await agent_executor.ainvoke({"input": message, "chat_history": []})
+            output = result.get("output", "I'm sorry, I couldn't process that.")
+            yield f"data: {json.dumps({'type': 'final', 'content': output})}
+
+"
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'final', 'content': f'Error: {str(e)}'})}
+
+"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": MODEL_NAME, "vision": True, "tools": 9, "agents": 5}
+    return {"status": "ok", "model": MODELNAME, "vision": True, "tools": 9, "agents": 1}
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 6 — Cloudflare Tunnel + commit URL back to GitHub
-# ═══════════════════════════════════════════════════════════════════════════════
-def commit_to_github(content: str):
-    url = f"https://api.github.com/repos/{REPO}/contents/{FILE_PATH}"
+def committogithub(content: str):
+    if not GITHUBTOKEN:
+        print("No GITHUBTOKEN set; skipping GitHub push.", flush=True)
+        return
+    url = f"https://api.github.com/repos/{REPO}/contents/{FILEPATH}"
     headers = {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Authorization": f"Bearer {GITHUBTOKEN}",
         "Accept": "application/vnd.github.v3+json",
     }
     data = {
@@ -618,22 +350,21 @@ def commit_to_github(content: str):
     resp = requests.get(url, headers=headers)
     if resp.status_code == 200:
         data["sha"] = resp.json().get("sha")
-    put = requests.put(url, headers=headers, json=data)
-    if put.status_code in (200, 201):
-        print("✅ Committed tunnel URL to GitHub", flush=True)
-    else:
-        print(f"❌ Failed to commit: {put.status_code} - {put.text}", flush=True)
+        put = requests.put(url, headers=headers, json=data)
+        if put.status_code in (200, 201):
+            print("Committed tunnel URL to GitHub", flush=True)
+        else:
+            print(f"Failed to commit {put.status_code} - {put.text}", flush=True)
 
 
 def start_tunnel():
     subprocess.run(
-        "wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/"
-        "cloudflared-linux-amd64 -O /tmp/cloudflared",
+        "wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O tmpcloudflared",
         shell=True,
     )
-    subprocess.run("chmod +x /tmp/cloudflared", shell=True)
+    subprocess.run("chmod +x tmpcloudflared", shell=True)
     proc = subprocess.Popen(
-        ["/tmp/cloudflared", "tunnel", "--url", "http://localhost:8000", "--no-autoupdate"],
+        ["./tmpcloudflared", "tunnel", "--url", "http://localhost:8000", "--no-autoupdate"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -645,53 +376,50 @@ def start_tunnel():
             time.sleep(0.5)
             continue
         if ".trycloudflare.com" in line:
-            match = re.search(r"https://[-a-zA-Z0-9]+\.trycloudflare\.com", line)
+            match = re.search(r"https://[a-zA-Z0-9.-]+.trycloudflare.com", line)
             if match:
                 url = match.group(0)
                 break
     return proc, url
 
 
-print("🌐 Starting Cloudflare Tunnel…", flush=True)
-tunnel_proc, public_url = start_tunnel()
-if not public_url:
-    print("❌ Failed to capture initial tunnel URL. Exiting.", flush=True)
+print("Starting Cloudflare Tunnel", flush=True)
+tunnelproc, publicurl = start_tunnel()
+if not publicurl:
+    print("Failed to capture initial tunnel URL. Exiting.", flush=True)
     sys.exit(1)
-print(f"🔗 PUBLIC CHAT API: {public_url}/chat", flush=True)
-commit_to_github(public_url)
+
+print(f"PUBLIC CHAT API: {publicurl}/chat", flush=True)
+committogithub(publicurl)
 
 
-def health_check_and_renew():
-    global tunnel_proc, public_url
-    # Run health checks for ~3 hours
-    start_time = time.time()
-    while time.time() - start_time < 10800:
-        time.sleep(600)  # 10 minutes
+def healthcheck_and_renew():
+    global tunnelproc, publicurl
+    starttime = time.time()
+    while time.time() - starttime < 10800:
+        time.sleep(600)
         try:
-            r = requests.get(f"{public_url}/health", timeout=10)
+            r = requests.get(f"{publicurl}/health", timeout=10)
             if r.status_code != 200:
                 raise Exception("Health check failed")
-            print("✅ Tunnel health check passed", flush=True)
+            print("Tunnel health check passed", flush=True)
         except Exception:
-            print("⚠️ Tunnel appears dead. Restarting…", flush=True)
+            print("Tunnel appears dead. Restarting.", flush=True)
             try:
-                tunnel_proc.terminate()
+                tunnelproc.terminate()
             except Exception:
                 pass
             time.sleep(2)
-            new_proc, new_url = start_tunnel()
-            if new_url:
-                tunnel_proc = new_proc
-                public_url = new_url
-                commit_to_github(public_url)
-                print(f"🔄 New tunnel started: {public_url}/chat", flush=True)
+            newproc, newurl = start_tunnel()
+            if newurl:
+                tunnelproc = newproc
+                publicurl = newurl
+                committogithub(publicurl)
+                print(f"New tunnel started {publicurl}/chat", flush=True)
 
 
-threading.Thread(target=health_check_and_renew, daemon=True).start()
+threading.Thread(target=healthcheck_and_renew, daemon=True).start()
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 7 — Run FastAPI server and keep kernel alive for 3 hours
-# ═══════════════════════════════════════════════════════════════════════════════
 import uvicorn  # noqa: E402
 
 
@@ -700,7 +428,6 @@ def run_server():
 
 
 threading.Thread(target=run_server, daemon=True).start()
-
-print("✅ All services running. Kernel will stay alive for 3 hours.", flush=True)
-time.sleep(10800)  # 3 hours
-print("⏰ 3 hours elapsed. Shutting down.", flush=True)
+print("All services running. Kernel will stay alive for 3 hours.", flush=True)
+time.sleep(10800)
+print("3 hours elapsed. Shutting down.", flush=True)
