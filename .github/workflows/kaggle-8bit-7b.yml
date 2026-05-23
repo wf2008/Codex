@@ -1,5 +1,5 @@
 # .github/workflows/kaggle-8bit-7b.yml
-name: 🧠 Bit‑4 AI (DeepThink + MCP + Vision + API)
+name: 🧠 Bit‑4 AI (DeepThink + Web + Code + Vision + API)
 
 on:
   workflow_dispatch:
@@ -42,7 +42,7 @@ jobs:
           ollama pull huihui_ai/qwen3-vl-abliterated:4b-instruct
           echo "✅ Vision model ready"
 
-      # ── 3. Install Python libraries (with langchain-classic) ─
+      # ── 3. Install Python libraries (with ddgs) ───────
       - name: Install Python dependencies
         run: |
           pip install --quiet \
@@ -50,7 +50,7 @@ jobs:
             langchain langchain-community langchain-core langchain-ollama \
             langchain-classic \
             langchain-sequential-thinking-tool \
-            duckduckgo-search
+            ddgs
 
       # ── 4. Install cloudflared (no account required) ─
       - name: Install cloudflared
@@ -78,7 +78,7 @@ jobs:
 
           # ── Tools (direct, no MCP servers needed) ────
           from langchain_core.tools import tool
-          from duckduckgo_search import DDGS
+          from ddgs import DDGS
           from sequential_thinking_tool import SequentialThinkingTool
 
           @tool
@@ -169,6 +169,7 @@ jobs:
               images = body.get("images", [])
 
               async def stream():
+                  progress = ""
                   try:
                       if images:
                           parts = [{"type": "text", "text": user_message}]
@@ -180,9 +181,40 @@ jobs:
                       else:
                           msg = {"role": "user", "content": user_message}
 
-                      result = await agent_executor.ainvoke({"input": user_message})
-                      final_output = result.get("output", "No response.")
-                      yield f"data: {json.dumps({'response': final_output})}\n\n"
+                      # Stream intermediate steps from the agent
+                      async for event in agent_executor.astream_events(
+                          {"input": user_message},
+                          version="v2"
+                      ):
+                          kind = event["event"]
+                          if kind == "on_chain_start" and event["name"] == "AgentExecutor":
+                              progress += "🤔 **Starting the task...**\n"
+                              yield f"data: {json.dumps({'response': progress})}\n\n"
+                          elif kind == "on_tool_start":
+                              tool_name = event["name"]
+                              progress += f"🔧 **Calling tool:** `{tool_name}`\n"
+                              yield f"data: {json.dumps({'response': progress})}\n\n"
+                          elif kind == "on_tool_end":
+                              tool_name = event["name"]
+                              # Tool output is in event["data"].get("output") – can be long, so truncate
+                              output = event["data"].get("output", "")
+                              if len(output) > 200:
+                                  output = output[:200] + "..."
+                              progress += f"✅ **Finished `{tool_name}`**\n"
+                              progress += f"> {output}\n\n"
+                              yield f"data: {json.dumps({'response': progress})}\n\n"
+                          elif kind == "on_chain_end" and event["name"] == "AgentExecutor":
+                              final_output = event["data"].get("output", "No response.")
+                              # Overwrite with the final output to avoid duplication
+                              progress = f"✅ **Done.**\n\n{final_output}"
+                              yield f"data: {json.dumps({'response': progress})}\n\n"
+
+                      # Fallback if streaming didn't catch the end
+                      if not progress:
+                          result = await agent_executor.ainvoke({"input": user_message})
+                          final_output = result.get("output", "No response.")
+                          yield f"data: {json.dumps({'response': final_output})}\n\n"
+
                   except Exception as e:
                       yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
