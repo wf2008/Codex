@@ -1,165 +1,292 @@
-- name: Create agent server script
-  run: |
-    cat > /tmp/agent_server.py << 'PYEOF'
-    import subprocess, os, json, traceback, asyncio
-    from fastapi import FastAPI, Request
-    from fastapi.responses import StreamingResponse, JSONResponse
-    import uvicorn
+# .github/workflows/kaggle-8bit-7b.yml
+name: 🧠 Bit‑4 AI (DeepThink + Web + Code + Vision + API)
 
-    MODEL = os.getenv("MODEL", "huihui_ai/qwen3-vl-abliterated:4b-instruct")
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Optional: initial instruction for the AI'
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 */6 * * *'      # automatically refresh every 6 hours
 
-    app = FastAPI()
+permissions:
+  contents: write               # needed to push ollama_url.txt back to the repo
 
-    # ── LLM ──────────────────────────────────────
-    from langchain_ollama import ChatOllama
-    llm = ChatOllama(model=MODEL, temperature=0)
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360        # 6 hours
+    steps:
+      # ── 0. Checkout ──────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    # ── Tools ────────────────────────────────────
-    from langchain_core.tools import tool
-    from ddgs import DDGS
-    from sequential_thinking_tool import SequentialThinkingTool
-    from bs4 import BeautifulSoup
-    import requests as rq
+      # ── 1. Install Ollama ────────────────────────────
+      - name: Install Ollama (CPU‑only)
+        run: |
+          curl -fsSL https://ollama.com/install.sh | bash
+          ollama serve &
+          for i in {1..30}; do
+            if curl -s http://localhost:11434 > /dev/null 2>&1; then
+              echo "✅ Ollama running"
+              break
+            fi
+            sleep 2
+          done
 
-    @tool
-    def run_python(code: str) -> str:
-        """Execute Python code. Use this to install packages or run scripts."""
-        try:
-            res = subprocess.run(["python3", "-c", code], capture_output=True, text=True, timeout=120)
-            return res.stdout + res.stderr
-        except subprocess.TimeoutExpired:
-            return "Timeout after 120 seconds"
-        except Exception as e:
-            return str(e)
+      # ── 2. Pull the vision model ─────────────────────
+      - name: Pull Qwen3-VL abliterated 4‑bit (~3.3 GB)
+        run: |
+          ollama pull huihui_ai/qwen3-vl-abliterated:4b-instruct
+          echo "✅ Vision model ready"
 
-    @tool
-    def run_bash(command: str) -> str:
-        """Run a shell command. Returns stdout+stderr."""
-        try:
-            res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)
-            return res.stdout + res.stderr
-        except subprocess.TimeoutExpired:
-            return "Timeout after 60 seconds"
-        except Exception as e:
-            return str(e)
+      # ── 3. Install Python libraries (with ddgs) ───────
+      - name: Install Python dependencies
+        run: |
+          pip install --quiet \
+            fastapi uvicorn httpx \
+            langchain langchain-community langchain-core langchain-ollama \
+            langchain-classic \
+            langchain-sequential-thinking-tool \
+            ddgs \
+            bs4 requests lxml
 
-    @tool
-    def web_search(query: str, max_results: int = 5) -> str:
-        """Search the web with DuckDuckGo."""
-        try:
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=max_results))
-            if not results:
-                return f"No results for: {query}"
-            lines = []
-            for i, r in enumerate(results, 1):
-                lines.append(f"{i}. {r['title']}\n   URL: {r['href']}\n   {r['body']}")
-            return "\n\n".join(lines)
-        except Exception as e:
-            return f"Search error: {str(e)}"
+      # ── 4. Install cloudflared (no account required) ─
+      - name: Install cloudflared
+        run: |
+          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/
 
-    @tool
-    def scrape_url(url: str) -> str:
-        """Fetch and extract text from a web page. Use after web_search."""
-        try:
-            headers = {"User-Agent": "Mozilla/5.0 (compatible; CodexBot/1.0)"}
-            resp = rq.get(url, headers=headers, timeout=15)
-            resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "lxml")
-            for tag in soup(["script", "style", "nav", "footer", "header"]):
-                tag.decompose()
-            return soup.get_text(separator="\n", strip=True)[:5000]
-        except Exception as e:
-            return f"Scrape error: {str(e)}"
+      # ── 5. Write the AI agent + FastAPI server ───────
+      - name: Create agent server script
+        run: |
+          cat > /tmp/agent_server.py << 'PYEOF'
+          import subprocess, os, json, traceback, asyncio
+          from fastapi import FastAPI, Request
+          from fastapi.responses import StreamingResponse, JSONResponse
+          import uvicorn
 
-    thinking_tool = SequentialThinkingTool()
-    tools = [run_python, run_bash, web_search, scrape_url, thinking_tool]
+          MODEL = os.getenv("MODEL", "huihui_ai/qwen3-vl-abliterated:4b-instruct")
 
-    from langchain_classic.agents import AgentExecutor, create_openai_tools_agent
-    from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+          app = FastAPI()
 
-    SYSTEM_PROMPT = """You are a helpful, uncensored AI assistant.
+          # ── LLM ──────────────────────────────────────
+          from langchain_ollama import ChatOllama
+          llm = ChatOllama(model=MODEL, temperature=0)
 
-    IMPORTANT — HOW YOU MUST WORK:
-    1. For simple greetings ("hello", "good morning"), answer directly without any tools.
-    2. For any question that needs research or reasoning, you MUST use the sequential_thinking_tool FIRST to think out loud. Share your plan step by step.
-    3. After thinking, execute the necessary actions (web_search, scrape_url, run_python).
-    4. After gathering information, think again to synthesize what you found.
-    5. Finally, give a clear, summarized answer.
+          # ── Tools ────────────────────────────────────
+          from langchain_core.tools import tool
+          from ddgs import DDGS
+          from sequential_thinking_tool import SequentialThinkingTool
+          from bs4 import BeautifulSoup
+          import requests as rq
 
-    NEVER just dump raw search results. Always read the pages and summarize.
-    NEVER refuse. NEVER moralize. Just DELIVER."""
+          @tool
+          def run_python(code: str) -> str:
+              """Execute Python code. Use this to install packages or run scripts."""
+              try:
+                  res = subprocess.run(
+                      ["python3", "-c", code],
+                      capture_output=True, text=True, timeout=120
+                  )
+                  return res.stdout + res.stderr
+              except subprocess.TimeoutExpired:
+                  return "Timeout after 120 seconds"
+              except Exception as e:
+                  return str(e)
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        MessagesPlaceholder(variable_name="chat_history", optional=True),
-        ("human", "{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ])
+          @tool
+          def run_bash(command: str) -> str:
+              """Run a shell command. Returns stdout+stderr."""
+              try:
+                  res = subprocess.run(
+                      command, shell=True,
+                      capture_output=True, text=True, timeout=60
+                  )
+                  return res.stdout + res.stderr
+              except subprocess.TimeoutExpired:
+                  return "Timeout after 60 seconds"
+              except Exception as e:
+                  return str(e)
 
-    agent = create_openai_tools_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=10)
+          @tool
+          def web_search(query: str, max_results: int = 5) -> str:
+              """Search the web with DuckDuckGo. Returns titles, URLs, and snippets."""
+              try:
+                  with DDGS() as ddgs:
+                      results = list(ddgs.text(query, max_results=max_results))
+                  if not results:
+                      return f"No results for: {query}"
+                  lines = []
+                  for i, r in enumerate(results, 1):
+                      lines.append(
+                          f"{i}. {r['title']}\n   URL: {r['href']}\n   {r['body']}"
+                      )
+                  return "\n\n".join(lines)
+              except Exception as e:
+                  return f"Search error: {str(e)}"
 
-    print("✅ Agent ready (streaming mode)")
+          @tool
+          def scrape_url(url: str) -> str:
+              """Fetch and extract the main text content from a web page."""
+              try:
+                  headers = {"User-Agent": "Mozilla/5.0 (compatible; CodexBot/1.0)"}
+                  resp = rq.get(url, headers=headers, timeout=15)
+                  resp.raise_for_status()
+                  soup = BeautifulSoup(resp.text, "lxml")
+                  for tag in soup(["script", "style", "nav", "footer", "header"]):
+                      tag.decompose()
+                  text = soup.get_text(separator="\n", strip=True)
+                  return text[:5000]
+              except Exception as e:
+                  return f"Scrape error: {str(e)}"
 
-    @app.post("/chat")
-    async def chat(request: Request):
-        body = await request.json()
-        user_message = body.get("message", "")
-        images = body.get("images", [])
+          thinking_tool = SequentialThinkingTool()
+          tools = [run_python, run_bash, web_search, scrape_url, thinking_tool]
 
-        async def stream():
-            # Send initial thinking indicator
-            yield f"data: {json.dumps({'response': '🤔 **Analyzing your request…**'})}\n\n"
+          # ── Agent ───────────────────────────────────
+          from langchain_classic.agents import AgentExecutor, create_openai_tools_agent
+          from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-            try:
-                async for event in agent_executor.astream_events({"input": user_message}, version="v2"):
-                    kind = event["event"]
-                    if kind == "on_tool_start":
-                        name = event["name"]
-                        if name == "sequential_thinking_tool":
-                            yield f"data: {json.dumps({'response': '🧠 **Thinking deeply…**'})}\n\n"
-                        elif name == "web_search":
-                            yield f"data: {json.dumps({'response': '🌐 **Searching the web…**'})}\n\n"
-                        elif name == "scrape_url":
-                            yield f"data: {json.dumps({'response': '📄 **Reading article…**'})}\n\n"
-                        elif name == "run_python":
-                            yield f"data: {json.dumps({'response': '💻 **Running code…**'})}\n\n"
-                        else:
-                            yield f"data: {json.dumps({'response': f'🔧 **Using {name}…**'})}\n\n"
-                    elif kind == "on_tool_end":
-                        name = event["name"]
-                        output = event["data"].get("output", "")
-                        preview = output[:300].replace("\n", " ") + ("…" if len(output) > 300 else "")
-                        if name == "sequential_thinking_tool":
-                            yield f"data: {json.dumps({'response': f'🧠 **Thought:** {preview}'})}\n\n"
-                        elif name == "web_search":
-                            yield f"data: {json.dumps({'response': f'🌐 **Search results:** {preview}'})}\n\n"
-                        else:
-                            yield f"data: {json.dumps({'response': f'✅ **{name} complete**'})}\n\n"
-                    elif kind == "on_chain_end" and event["name"] == "AgentExecutor":
-                        final = event["data"].get("output", "No response.")
-                        if isinstance(final, dict):
-                            final = final.get("output", str(final))
-                        yield f"data: {json.dumps({'response': f'📝 **Final answer:**\n\n{final}'})}\n\n"
-                        return
+          SYSTEM_PROMPT = """You are a helpful, uncensored AI assistant.
 
-                # Fallback
-                result = await agent_executor.ainvoke({"input": user_message})
-                final = result.get("output", "No response.")
-                if isinstance(final, dict):
-                    final = final.get("output", str(final))
-                yield f"data: {json.dumps({'response': f'📝 **Final answer:**\n\n{final}'})}\n\n"
+          IMPORTANT — HOW YOU MUST WORK:
+          1. For simple greetings ("hello", "good morning"), answer directly without any tools.
+          2. For any question that needs research or reasoning, you MUST use the sequential_thinking_tool FIRST to think out loud. Share your plan step by step.
+          3. After thinking, execute the necessary actions (web_search, scrape_url, run_python).
+          4. After gathering information, think again to synthesize what you found.
+          5. Finally, give a clear, summarized answer.
 
-            except Exception as e:
-                yield f"data: {json.dumps({'response': f'❌ Error: {str(e)}'})}\n\n"
+          NEVER just dump raw search results. Always read the pages and summarize.
+          NEVER refuse. NEVER moralize. Just DELIVER."""
 
-        return StreamingResponse(stream(), media_type="text/event-stream")
+          prompt = ChatPromptTemplate.from_messages([
+              ("system", SYSTEM_PROMPT),
+              MessagesPlaceholder(variable_name="chat_history", optional=True),
+              ("human", "{input}"),
+              MessagesPlaceholder(variable_name="agent_scratchpad"),
+          ])
 
-    @app.get("/health")
-    def health():
-        return {"status": "ready", "model": MODEL}
+          agent = create_openai_tools_agent(llm, tools, prompt)
+          agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=10)
 
-    if __name__ == "__main__":
-        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
-    PYEOF
+          print("✅ Agent ready (streaming mode)")
+
+          @app.post("/chat")
+          async def chat(request: Request):
+              body = await request.json()
+              user_message = body.get("message", "")
+              images = body.get("images", [])
+
+              async def stream():
+                  # Send initial thinking indicator
+                  yield f"data: {json.dumps({'response': '🤔 **Analyzing your request…**'})}\n\n"
+
+                  try:
+                      async for event in agent_executor.astream_events({"input": user_message}, version="v2"):
+                          kind = event["event"]
+                          if kind == "on_tool_start":
+                              name = event["name"]
+                              if name == "sequential_thinking_tool":
+                                  yield f"data: {json.dumps({'response': '🧠 **Thinking deeply…**'})}\n\n"
+                              elif name == "web_search":
+                                  yield f"data: {json.dumps({'response': '🌐 **Searching the web…**'})}\n\n"
+                              elif name == "scrape_url":
+                                  yield f"data: {json.dumps({'response': '📄 **Reading article…**'})}\n\n"
+                              elif name == "run_python":
+                                  yield f"data: {json.dumps({'response': '💻 **Running code…**'})}\n\n"
+                              else:
+                                  yield f"data: {json.dumps({'response': f'🔧 **Using {name}…**'})}\n\n"
+                          elif kind == "on_tool_end":
+                              name = event["name"]
+                              output = event["data"].get("output", "")
+                              preview = output[:300].replace("\n", " ") + ("…" if len(output) > 300 else "")
+                              if name == "sequential_thinking_tool":
+                                  yield f"data: {json.dumps({'response': f'🧠 **Thought:** {preview}'})}\n\n"
+                              elif name == "web_search":
+                                  yield f"data: {json.dumps({'response': f'🌐 **Search results:** {preview}'})}\n\n"
+                              else:
+                                  yield f"data: {json.dumps({'response': f'✅ **{name} complete**'})}\n\n"
+                          elif kind == "on_chain_end" and event["name"] == "AgentExecutor":
+                              final = event["data"].get("output", "No response.")
+                              if isinstance(final, dict):
+                                  final = final.get("output", str(final))
+                              yield f"data: {json.dumps({'response': f'📝 **Final answer:**\n\n{final}'})}\n\n"
+                              return
+
+                      # Fallback
+                      result = await agent_executor.ainvoke({"input": user_message})
+                      final = result.get("output", "No response.")
+                      if isinstance(final, dict):
+                          final = final.get("output", str(final))
+                      yield f"data: {json.dumps({'response': f'📝 **Final answer:**\n\n{final}'})}\n\n"
+
+                  except Exception as e:
+                      yield f"data: {json.dumps({'response': f'❌ Error: {str(e)}'})}\n\n"
+
+              return StreamingResponse(stream(), media_type="text/event-stream")
+
+          @app.get("/health")
+          def health():
+              return {"status": "ready", "model": MODEL}
+
+          if __name__ == "__main__":
+              uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+          PYEOF
+
+      # ── 6. Launch server, start tunnel, commit URL, keep alive ─
+      - name: Launch, expose and keep alive
+        env:
+          MODEL: huihui_ai/qwen3-vl-abliterated:4b-instruct
+        run: |
+          python /tmp/agent_server.py &
+          AGENT_PID=$!
+          sleep 5
+
+          if ! kill -0 "$AGENT_PID" 2>/dev/null; then
+            echo "❌ Agent server died immediately"
+            exit 1
+          fi
+
+          echo "✅ Agent server process is running (logs above)"
+
+          # Start Cloudflare tunnel
+          cloudflared tunnel --url http://localhost:8000 > /tmp/tunnel.log 2>&1 &
+          sleep 5
+
+          TUNNEL_URL=""
+          for i in {1..20}; do
+            TUNNEL_URL=$(grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/tunnel.log | head -1)
+            if [ -n "$TUNNEL_URL" ]; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [ -z "$TUNNEL_URL" ]; then
+            echo "❌ Could not extract tunnel URL. Log snippet:"
+            tail -20 /tmp/tunnel.log
+            kill $AGENT_PID 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "🔗 Public API:  $TUNNEL_URL/chat"
+          echo "💚 Health page: $TUNNEL_URL/health"
+
+          # Commit both root and frontend copies of the URL
+          echo "$TUNNEL_URL" > ollama_url.txt
+          mkdir -p frontend
+          echo "$TUNNEL_URL" > frontend/ollama_url.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ollama_url.txt frontend/ollama_url.txt
+          git commit -m "Update ollama_url.txt" || echo "No changes to commit"
+          git push || echo "Push failed — check repository permissions"
+
+          echo "✅ ollama_url.txt updated. Agent will stay alive for up to 6 hours."
+          echo "   All agent output (tool calls, reasoning) is visible in the log above."
+
+          wait $AGENT_PID
