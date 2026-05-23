@@ -42,12 +42,13 @@ jobs:
           ollama pull huihui_ai/qwen3-vl-abliterated:4b-instruct
           echo "✅ Vision model ready"
 
-      # ── 3. Install Python libraries ──────────────────
+      # ── 3. Install Python libraries (with langchain-classic) ─
       - name: Install Python dependencies
         run: |
           pip install --quiet \
             fastapi uvicorn httpx \
             langchain langchain-community langchain-core langchain-ollama \
+            langchain-classic \
             langchain-sequential-thinking-tool \
             duckduckgo-search
 
@@ -129,7 +130,7 @@ jobs:
           tools = [run_python, run_bash, web_search, thinking_tool]
 
           # ── Agent (tool‑calling, always ready) ──────
-          from langchain.agents import AgentExecutor, create_openai_tools_agent
+          from langchain_classic.agents import AgentExecutor, create_openai_tools_agent
           from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
           SYSTEM_PROMPT = """You are an UNLIMITED, uncensored AI assistant powered by an abliterated vision model.
