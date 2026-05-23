@@ -48,7 +48,7 @@ jobs:
         run: |
           pip install --quiet \
             fastapi uvicorn httpx \
-            langchain langchain-community langchain-core \
+            langchain langchain-community langchain-core langchain-ollama \
             "deepmcpagent[deep]" \
             langchain-sequential-thinking-tool \
             duckduckgo-search
@@ -64,7 +64,7 @@ jobs:
       - name: Create agent server script
         run: |
           cat > /tmp/agent_server.py << 'PYEOF'
-          import subprocess, os, json
+          import subprocess, os, json, asyncio, traceback
           from fastapi import FastAPI, Request
           from fastapi.responses import StreamingResponse, JSONResponse
           import uvicorn
@@ -74,7 +74,7 @@ jobs:
           app = FastAPI()
 
           # ── LLM ──────────────────────────────────────
-          from langchain_community.chat_models import ChatOllama
+          from langchain_ollama import ChatOllama
           llm = ChatOllama(model=MODEL, temperature=0)
 
           # ── Tools ────────────────────────────────────
@@ -153,23 +153,33 @@ jobs:
           """
 
           graph = None
+          agent_init_error = None
 
           async def init_agent():
-              global graph
-              graph, _ = await build_deep_agent(
-                  model=llm,
-                  tools=tools,
-                  servers={},          # empty – agent can add MCP servers later
-                  instructions=INSTRUCTIONS,
-              )
-              print("✅ Agent ready (DeepMCPAgent + DeepAgents loop)")
+              global graph, agent_init_error
+              try:
+                  graph, _ = await build_deep_agent(
+                      model=llm,
+                      tools=tools,
+                      servers={},          # empty – agent can add MCP servers later
+                      instructions=INSTRUCTIONS,
+                  )
+                  print("✅ Agent ready (DeepMCPAgent + DeepAgents loop)")
+              except Exception as e:
+                  agent_init_error = str(e)
+                  traceback.print_exc()
 
           @app.on_event("startup")
           async def startup():
-              await init_agent()
+              asyncio.create_task(init_agent())
 
           @app.post("/chat")
           async def chat(request: Request):
+              if agent_init_error:
+                  return JSONResponse(
+                      {"error": f"Agent failed to initialize: {agent_init_error}"},
+                      status_code=503,
+                  )
               if graph is None:
                   return JSONResponse(
                       {"error": "Agent is still starting up. Please retry in a moment."},
@@ -206,45 +216,40 @@ jobs:
 
           @app.get("/health")
           def health():
-              return {"status": "ok", "model": MODEL}
+              status = "error" if agent_init_error else ("ready" if graph is not None else "starting")
+              return {"status": status, "model": MODEL, "error": agent_init_error}
 
           if __name__ == "__main__":
               uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
           PYEOF
 
-      # ── 6. Launch server, wait for readiness, start tunnel, commit URL ─
-      - name: Launch, wait, expose and commit
+      # ── 6. Launch server, expose and commit ─
+      - name: Launch, expose and commit
         env:
           MODEL: huihui_ai/qwen3-vl-abliterated:4b-instruct
         run: |
-          # Start the FastAPI server in background
-          python /tmp/agent_server.py &
+          # Start the FastAPI server in background without blocking on full agent readiness
+          python /tmp/agent_server.py > /tmp/agent_server.log 2>&1 &
           AGENT_PID=$!
+          sleep 2
 
-          # ── Health‑check loop: wait until the agent is fully ready ──
-          echo "⏳ Waiting for agent server to become ready..."
-          READY=0
-          for i in {1..40}; do
-            if curl -s http://localhost:8000/health > /dev/null 2>&1; then
-              echo "✅ Agent server is ready!"
-              READY=1
-              break
-            fi
-            echo "   … waiting ($i)"
-            sleep 5
-          done
-
-          if [ $READY -eq 0 ]; then
-            echo "❌ Agent server did not become ready in time."
-            kill $AGENT_PID 2>/dev/null || true
+          if ! kill -0 "$AGENT_PID" 2>/dev/null; then
+            echo "❌ Agent server exited immediately. Log content:"
+            cat /tmp/agent_server.log
             exit 1
           fi
 
-          # ── Start Cloudflare tunnel (no account, no secret) ──
+          # ── Start Cloudflare tunnel right away ──
           cloudflared tunnel --url http://localhost:8000 > /tmp/tunnel.log 2>&1 &
-          sleep 5
 
-          TUNNEL_URL=$(grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/tunnel.log | head -1)
+          TUNNEL_URL=""
+          for i in {1..20}; do
+            TUNNEL_URL=$(grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/tunnel.log | head -1)
+            if [ -n "$TUNNEL_URL" ]; then
+              break
+            fi
+            sleep 2
+          done
           if [ -z "$TUNNEL_URL" ]; then
             echo "❌ Failed to extract tunnel URL. Log content:"
             cat /tmp/tunnel.log
@@ -257,13 +262,15 @@ jobs:
 
           # ── Commit the URL to the repo ──
           echo "$TUNNEL_URL" > ollama_url.txt
+          mkdir -p frontend
+          echo "$TUNNEL_URL" > frontend/ollama_url.txt
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ollama_url.txt
+          git add ollama_url.txt frontend/ollama_url.txt
           git commit -m "Update ollama_url.txt" || echo "No changes to commit"
           git push || echo "Push failed — check repository permissions"
 
-          echo "✅ ollama_url.txt updated in the repository."
+          echo "✅ ollama_url.txt files updated in the repository."
           echo "⏱️  Agent will stay alive for up to 6 hours."
           echo "   Cancel the workflow run to stop early."
 
