@@ -158,6 +158,7 @@ jobs:
           async def init_agent():
               global graph, agent_init_error
               try:
+                  print("⏳ Building Deep Agent (this may take 60‑120s on CPU)...")
                   graph, _ = await build_deep_agent(
                       model=llm,
                       tools=tools,
@@ -168,6 +169,7 @@ jobs:
               except Exception as e:
                   agent_init_error = str(e)
                   traceback.print_exc()
+                  print(f"❌ Agent initialization failed: {e}")
 
           @app.on_event("startup")
           async def startup():
@@ -216,19 +218,29 @@ jobs:
 
           @app.get("/health")
           def health():
-              status = "error" if agent_init_error else ("ready" if graph is not None else "starting")
-              return {"status": status, "model": MODEL, "error": agent_init_error}
+              # 🔧 FIX: Return 503 when agent is NOT ready, 200 only when fully ready
+              if agent_init_error:
+                  return JSONResponse(
+                      {"status": "error", "detail": agent_init_error},
+                      status_code=503,
+                  )
+              if graph is None:
+                  return JSONResponse(
+                      {"status": "starting", "detail": "Agent is still initializing. Try again soon."},
+                      status_code=503,
+                  )
+              return {"status": "ready", "model": MODEL}
 
           if __name__ == "__main__":
               uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
           PYEOF
 
-      # ── 6. Launch server, expose and commit ─
-      - name: Launch, expose and commit
+      # ── 6. Launch server, WAIT for agent readiness, start tunnel, commit URL ─
+      - name: Launch, wait, expose and commit
         env:
           MODEL: huihui_ai/qwen3-vl-abliterated:4b-instruct
         run: |
-          # Start the FastAPI server in background without blocking on full agent readiness
+          # Start the FastAPI server in background
           python /tmp/agent_server.py > /tmp/agent_server.log 2>&1 &
           AGENT_PID=$!
           sleep 2
@@ -239,8 +251,29 @@ jobs:
             exit 1
           fi
 
-          # ── Start Cloudflare tunnel right away ──
+          # ── 🔧 FIX: Health‑check loop – wait until the agent is FULLY ready ──
+          echo "⏳ Waiting for AI agent to be fully ready (this may take 1‑2 minutes)..."
+          READY=0
+          for i in {1..60}; do
+            STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health)
+            if [ "$STATUS_CODE" = "200" ]; then
+              echo "✅ AI Agent is fully ready!"
+              READY=1
+              break
+            fi
+            echo "   … still waiting ($i) - HTTP $STATUS_CODE"
+            sleep 5
+          done
+
+          if [ $READY -eq 0 ]; then
+            echo "❌ AI Agent did not become ready within 5 minutes."
+            kill $AGENT_PID 2>/dev/null || true
+            exit 1
+          fi
+
+          # ── Start Cloudflare tunnel (only after agent is ready) ──
           cloudflared tunnel --url http://localhost:8000 > /tmp/tunnel.log 2>&1 &
+          sleep 5
 
           TUNNEL_URL=""
           for i in {1..20}; do
